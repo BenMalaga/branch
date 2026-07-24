@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "branch"
+version = "0.1.0"
+description = "Free, open-source city-planning analysis with an audit trail: fiscal productivity, walkability, heat, and geoprocessing on free public data."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Ben Malaga" }]
+keywords = ["gis", "routing", "urban-forestry", "openstreetmap", "geospatial", "heat", "shade"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    "osmnx>=2.1",
+    "networkx>=3.3",
+    "geopandas>=1.0",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "pysolar>=0.11",
+    "folium>=0.17",
+    "mapclassify>=2.6",
+    "requests>=2.31",
+    "numpy>=1.26",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+# Extra libraries used by the analytics modules (ArcGIS export, PostGIS, ML,
+# raster, hazard/H3). The core router runs without these.
+full = [
+    "rasterio>=1.3",
+    "scikit-learn>=1.3",
+    "h3>=4.0",
+    "duckdb>=1.0",
+    "psycopg2-binary>=2.9",
+    "tifffile>=2024.1",
+    "flask>=3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/BenMalaga/branch"
+
+[project.scripts]
+branch = "branch.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["branch*"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore:Leap seconds"]

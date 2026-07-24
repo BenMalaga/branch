@@ -1,0 +1,35 @@
+# Reproducible PostGIS instance for branch's spatial database layer.
+#
+# Brings up a PostGIS 16 / 3.4 server that branch.sqldb connects to with the
+# same defaults it uses in code (host localhost, port 55432, db/user/password
+# below). Start it with:
+#
+#     docker compose up -d
+#
+# then load and query the Park Slope data:
+#
+#     python -c "from branch import sqldb, config; \
+#                sqldb.load(config.AREAS['park_slope']); sqldb.run_demo_queries()"
+#
+# The named volume persists the loaded tables across restarts; remove it with
+# "docker compose down -v" for a clean slate.
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: branch_postgis
+    environment:
+      POSTGRES_DB: branch
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: branch
+    ports:
+      - "55432:5432"
+    volumes:
+      - branch_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d branch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  branch_pgdata:

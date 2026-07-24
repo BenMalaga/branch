@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Downloaded / regenerated data + generated outputs
+data/
+exports/
+cache/
+web/data/
+route.html
+
+# Deploy
+.fly/
+
+# OS
+.DS_Store
+
+# generated demo / export outputs
+examples/
+/*.geojson
+/planting_gaps.*
+/scored_segments.*

@@ -1,0 +1,24 @@
+# branch runtime dependencies (Python 3.11+)
+osmnx==2.1.1
+networkx==3.6.1
+geopandas==1.1.4
+shapely==2.1.2
+pyproj==3.7.2
+pysolar==0.13
+folium==0.20.0
+mapclassify==2.10.0
+requests==2.34.2
+numpy==2.5.1
+matplotlib==3.10.8
+
+# Analytics modules (arcgis_export, sqldb, ml, raster, hazard). The core
+# router runs without these; install them to use the extra CLI subcommands.
+rasterio==1.5.0
+scikit-learn==1.9.0
+h3==4.5.0
+duckdb==1.5.5
+psycopg2-binary==2.9.12
+tifffile==2026.7.14
+
+# Web platform (branch serve)
+flask==3.1.3

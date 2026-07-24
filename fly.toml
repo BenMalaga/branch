@@ -1,0 +1,25 @@
+# Fly.io deploy config for branch (the whole app: Flask backend + web shell).
+# Fly runs the Docker image, so the heavy Python geospatial backend works here
+# (unlike Vercel serverless).
+#
+#   fly launch --no-deploy   # pick your own unique app name + region
+#   fly deploy
+#   fly certs add planwithbranch.com   # then add the DNS records Fly prints
+
+app = "branch-gis"
+primary_region = "ewr"   # Newark, closest to NYC data
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "1gb"          # bump to 2gb if large on-demand graphs OOM
+  cpu_kind = "shared"
+  cpus = 1

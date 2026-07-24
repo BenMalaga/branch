@@ -1,0 +1,13 @@
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+venv
+data/*.graphml
+data/*.geojson
+web/data/*.json
+examples/*.html
+exports
+.DS_Store
