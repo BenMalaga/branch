@@ -83,6 +83,10 @@
   .layer input{accent-color:var(--accent)}
   .layer .x{color:var(--faint);border:none;background:none;font-size:16px;line-height:1}
   .layer .x:hover{color:var(--ink)}
+  .legend{margin:1px 0 11px 22px}
+  .legend .lgtop{color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin-bottom:4px}
+  .legend .lgbar{height:8px;border-radius:4px;background:linear-gradient(90deg,#14402a,#4bab72,#b7e4c7)}
+  .legend .lgends{display:flex;justify-content:space-between;margin-top:3px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
   .empty{font-size:12.5px;color:var(--faint);text-align:center;padding:34px 12px;line-height:1.65}
   .empty svg{width:30px;height:30px;opacity:.5;margin-bottom:10px}
 
@@ -210,10 +214,13 @@ function gradColor(field,gj){
   const lo=Math.min(...v), hi=Math.max(...v); const h=hi>lo?hi:lo+1;
   return ["interpolate",["linear"],["get",field], lo,"#14402a",(lo+h)/2,"#4bab72",h,"#b7e4c7"];
 }
+const FIELD_LABEL={value_per_acre:"value / acre",tax_per_acre:"tax / acre",count:"count",suitability:"suitability",score:"score",reach_acres:"reach (acres)"};
+function fmtVal(field,n){ if(n==null||isNaN(n))return "-"; const money=field==="value_per_acre"||field==="tax_per_acre"; const a=Math.abs(n); let s; if(a>=1e6)s=(n/1e6).toFixed(1).replace(/\.0$/,"")+"M"; else if(a>=1e3)s=(n/1e3).toFixed(1).replace(/\.0$/,"")+"k"; else s=(Math.round(n*10)/10).toString(); return money?"$"+s:s; }
 function drawLayer(L){
   if(map.getSource(L.id)) return;
   map.addSource(L.id,{type:"geojson",data:L.geojson});
   const field=gradField(L.geojson); L.field=field;
+  if(field){ const gv=(L.geojson.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number"); L.lo=Math.min(...gv); L.hi=Math.max(...gv); }
   const col=field?gradColor(field,L.geojson):L.color;
   map.addLayer({id:L.id+"-fill",source:L.id,type:"fill",filter:["==","$type","Polygon"],paint:{"fill-color":col,"fill-opacity":field?0.6:0.22}});
   map.addLayer({id:L.id+"-line",source:L.id,type:"line",filter:["!=","$type","Point"],paint:{"line-color":field?"#0e1311":L.color,"line-width":field?0.6:2.5}});
@@ -331,7 +338,7 @@ async function runTool(t,dlg){
 // ---------- LAYERS ----------
 function layersHTML(){
   if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div>`;
-  return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis"><span class="nm">${esc(l.name)}</span><button class="x" data-i="${i}">&times;</button></div>`).join("");
+  return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis"><span class="nm">${esc(l.name)}</span><button class="x" data-i="${i}">&times;</button></div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("");
 }
 function wireLayers(){
   document.querySelectorAll(".lvis").forEach(c=>c.onchange=()=>{ const L=layers[+c.dataset.i]; L.visible=c.checked; setVis(L); });
