@@ -1,0 +1,10 @@
+# Render blueprint: free deploy of the branch web app.
+# In the Render dashboard, either:
+#   New -> Blueprint  -> pick this repo (uses this file), or
+#   New -> Web Service -> pick this repo (the Dockerfile is auto-detected).
+services:
+  - type: web
+    name: branch
+    runtime: docker
+    plan: free
+    healthCheckPath: /
