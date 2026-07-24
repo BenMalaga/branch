@@ -6,6 +6,20 @@
 <title>branch - free, verified city-planning analysis</title>
 <meta name="description" content="branch is free, open-source city-planning analysis with an audit trail: cost, value-per-acre, ROI, walksheds, heat and equity, computed from free public data in your browser. Sits beside ArcGIS. Bring your own AI key or a free local model.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 28'%3E%3Crect x='7.75' y='13' width='5.5' height='13' rx='2.5' fill='%238ed3a6'/%3E%3Cpath d='M11 14 C 12 7 18 3.5 21 5.5 C 19.5 11.5 13.5 15 10.5 13.6 Z' fill='%238ed3a6'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="branch">
+<meta property="og:title" content="branch - free city-planning analysis with an audit trail">
+<meta property="og:description" content="Cost, value per acre, ROI, walksheds, heat and equity, computed from free public data in your browser. Open source, and it sits beside ArcGIS.">
+<meta property="og:url" content="https://planwithbranch.com/">
+<meta property="og:image" content="https://planwithbranch.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="branch: free city-planning analysis with an audit trail">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="branch - free city-planning analysis with an audit trail">
+<meta name="twitter:description" content="Cost, value per acre, ROI, walksheds, heat and equity, computed from free public data in your browser. Open source, and it sits beside ArcGIS.">
+<meta name="twitter:image" content="https://planwithbranch.com/og.png">
+<meta name="theme-color" content="#0e1311">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <style>
   :root{
@@ -122,7 +136,10 @@
   .spin{width:26px;height:26px;border-radius:50%;border:2.5px solid #263029;border-top-color:var(--accent);animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion:reduce){.spin{animation:none}*{transition:none!important}}
-  @media (max-width:820px){body{overflow:auto}#app{flex-direction:column;height:auto}#rail{flex-direction:row;width:100%;height:auto}#rail .rb{height:54px;flex:1}#rail .rb.on::before{left:12px;right:12px;top:auto;bottom:0;width:auto;height:2.5px}#panel{width:100%}#mapwrap{height:56vh}.tag{display:none}}
+  @media (max-width:820px){body{overflow:auto}#app{flex-direction:column;height:auto}#rail{flex-direction:row;width:100%;height:auto}#rail .rb{height:54px;flex:1}#rail .rb.on::before{left:12px;right:12px;top:auto;bottom:0;width:auto;height:2.5px}#panel{width:100%}#mapwrap{height:56vh;min-height:360px}.tag{display:none}
+    #search{left:14px;right:14px;width:auto;max-width:none}
+    #basemaps{top:66px;right:14px}
+    #draw{bottom:14px;left:14px}}
 </style>
 </head>
 <body>
