@@ -270,8 +270,36 @@ function askHTML(){ return `
   <textarea class="field" id="q2" placeholder="e.g. Estimate the cost to plant 20 trees along this street and their 20-year ROI."></textarea>
   <div class="row" style="margin-top:9px"><button class="btn pri wide" id="askBtn">Ask branch</button></div>
   <p class="sub" style="margin-top:10px">Uses your AI settings (top right). No key? Choose the free local Ollama option.</p>
+  <div class="cat">No AI key? See it work</div>
+  <button class="btn wide" onclick="runExample()">Try an example</button>
+  <p class="sub" style="margin-top:8px">Loads real OpenStreetMap data for a block of Manhattan and maps how dense it is. No key needed, and it leaves a layer on the map so the other tools have something to work on.</p>
   <div id="thread"></div>`; }
 function wireAsk(){ $("askBtn").onclick=ask; $("q2").addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")ask();}); }
+async function callTool(id,params){
+  const r=await fetch(`/api/tools/${id}/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params)});
+  const d=await r.json();
+  if(d.error) throw new Error(d.error);
+  return d.result;
+}
+window.runExample=async()=>{
+  const bbox=[-73.9980,40.7250,-73.9850,40.7370];
+  setLoading(true,"Loading OpenStreetMap data...");
+  try{
+    map.fitBounds([[bbox[0],bbox[1]],[bbox[2],bbox[3]]],{padding:60});
+    const pts=await callTool("osm",{bbox,tags:{amenity:"restaurant"}});
+    if(!pts||!(pts.features||[]).length) throw new Error("No features came back for the example area.");
+    addLayer("Restaurants (OpenStreetMap)",pts,{fit:false});
+    setLoading(true,"Aggregating to hexagons...");
+    const hex=await callTool("density_hexbin",{layer:pts,resolution:9});
+    if(hex&&(hex.features||[]).length) addLayer("Restaurant density",hex,{fit:false});
+    showTab("layers");
+  }catch(e){
+    setLoading(false);
+    showTab("ask");
+    const th=$("thread");
+    if(th) th.insertAdjacentHTML("beforeend",`<div class="msg err">Example failed: ${esc(e.message||"request failed")}</div>`);
+  }finally{ setLoading(false); }
+};
 async function ask(){
   const q=$("q2").value.trim(); if(!q)return;
   const th=$("thread");
@@ -303,6 +331,8 @@ function toolsHTML(){
   });
   return h;
 }
+// Tools that build a street network: slow the first time in a new area, then cached.
+const SLOW_TOOLS=["walkshed","coolwalk"];
 window.openTool=id=>{ const t=tools.find(x=>x.id===id); if(t) toolDialog(t); };
 function toolDialog(t){
   const props=(t.params&&t.params.properties)||{}, req=(t.params&&t.params.required)||[];
@@ -312,7 +342,9 @@ function toolDialog(t){
     const isBbox=(p.type==="array"&&(p.maxItems===4||k==="bbox"));
     const isPt=(p.type==="array"&&!isBbox);
     fields+=`<label class="lb"><b>${k}</b>${req.includes(k)?" *":""} ${esc(p.description||"")}</label>`;
-    if(isLayer) fields+=`<select class="field" data-k="${k}" data-kind="layer">${layers.length?layers.map((l,i)=>`<option value="${i}">${esc(l.name)}</option>`).join(""):`<option value="">(add a layer first)</option>`}</select>`;
+    if(isLayer) fields+=layers.length
+      ? `<select class="field" data-k="${k}" data-kind="layer">${layers.map((l,i)=>`<option value="${i}">${esc(l.name)}</option>`).join("")}</select>`
+      : `<select class="field" data-k="${k}" data-kind="layer" disabled><option value="">no layers yet</option></select><p class="sub" style="margin-top:6px">This tool runs on a layer. Get one with <a href="#" onclick="this.closest('dialog').close();runExample();return false">Try an example</a>, load OpenStreetMap features from the Data tab, or drop in your own file.</p>`;
     else if(isBbox) fields+=`<button class="btn wide" type="button" data-k="${k}" data-kind="bbox" onclick="this.dataset.val=mapBbox();this.textContent='map view set'">Use current map view</button>`;
     else if(isPt) fields+=`<button class="btn wide" type="button" data-k="${k}" data-kind="point" onclick="pickPoint(this)">Click on the map to set</button>`;
     else if(p.enum) fields+=`<select class="field" data-k="${k}" data-kind="val">${p.enum.map(o=>`<option>${o}</option>`).join("")}</select>`;
@@ -340,8 +372,15 @@ async function runTool(t,dlg){
     if(v!==undefined&&v!=="") params[k]=v;
   });
   const out=dlg.querySelector("#tout");
+  const need=((t.params&&t.params.required)||[]).filter(k=>params[k]===undefined);
+  if(need.length){
+    const props=(t.params&&t.params.properties)||{};
+    const wantsLayer=need.some(k=>(props[k]||{}).type==="object");
+    out.innerHTML=`<div class="msg err" style="margin-top:12px">Still needed: ${esc(need.join(", "))}.${wantsLayer?" Run Try an example on the Ask tab to put a layer on the map first.":""}</div>`;
+    return;
+  }
   out.innerHTML=`<p class="sub" style="margin-top:12px">Running...</p>`;
-  setLoading(true,`Running ${t.title}...`);
+  setLoading(true,SLOW_TOOLS.includes(t.id)?`Running ${t.title}. The first run in a new area downloads OpenStreetMap data and can take up to a minute; nearby runs after that are quick.`:`Running ${t.title}...`);
   try{
     const r=await fetch(`/api/tools/${t.id}/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params)});
     const d=await r.json();
@@ -354,7 +393,7 @@ async function runTool(t,dlg){
 
 // ---------- LAYERS ----------
 function layersHTML(){
-  if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div>`;
+  if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
   return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis"><span class="nm">${esc(l.name)}</span><button class="x" data-i="${i}">&times;</button></div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("");
 }
 function wireLayers(){

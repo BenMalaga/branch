@@ -9,6 +9,7 @@ CRS (meters) so downstream geometry math is in real-world units.
 """
 from __future__ import annotations
 
+import math
 import os
 
 import geopandas as gpd
@@ -24,15 +25,28 @@ ox.settings.use_cache = True
 ox.settings.log_console = False
 
 
+# Ad-hoc areas are snapped outward to this grid, in degrees (~1.1 km), before
+# they become a cache key. Without it, two clicks a block apart produce two
+# different keys and each pays the full OpenStreetMap download again.
+CACHE_GRID_DEG = 0.01
+
+
 def area_from_bbox(bbox: tuple[float, float, float, float],
                    name: str = "Custom area") -> Area:
     """Build an ad-hoc Area from a raw (west, south, east, north) bbox.
 
-    Used for on-demand routing anywhere: the key is derived from the rounded
-    bbox so the downloaded graph and trees cache and are reused for nearby
-    requests. demo_from/demo_to are set to the center (unused off the presets).
+    Used for on-demand routing anywhere. The bbox is expanded outward to a fixed
+    grid so that nearby requests resolve to the same key and reuse the cached
+    download instead of refetching. Expanding (rather than rounding) guarantees
+    the snapped area still covers everything the caller asked for.
+    demo_from/demo_to are set to the center (unused off the presets).
     """
     w, s, e, n = bbox
+    g = CACHE_GRID_DEG
+    w = round(math.floor(w / g) * g, 4)
+    s = round(math.floor(s / g) * g, 4)
+    e = round(math.ceil(e / g) * g, 4)
+    n = round(math.ceil(n / g) * g, 4)
     center = ((s + n) / 2.0, (w + e) / 2.0)
     key = "bbox_" + "_".join(f"{v:.4f}".replace("-", "m").replace(".", "p")
                              for v in (w, s, e, n))
@@ -49,13 +63,59 @@ def get_graph(area: Area, data_dir: str = config.DATA_DIR,
     if os.path.exists(path):
         G = ox.io.load_graphml(path)
     else:
-        # osmnx 2.x bbox order is (west, south, east, north).
-        G = ox.graph.graph_from_bbox(area.bbox, network_type=network_type,
-                                     simplify=True)
-        ox.io.save_graphml(G, path)
+        covering = _covering_cache(area.bbox, data_dir, network_type)
+        if covering:
+            # An area we already downloaded contains this one. Reuse it rather
+            # than paying another Overpass download for overlapping streets.
+            G = ox.io.load_graphml(covering)
+        else:
+            # osmnx 2.x bbox order is (west, south, east, north).
+            G = ox.graph.graph_from_bbox(area.bbox, network_type=network_type,
+                                         simplify=True)
+            ox.io.save_graphml(G, path)
     G = ox.projection.project_graph(G, to_crs=config.METRIC_CRS)
     _ensure_edge_geometry(G)
     return G
+
+
+def _bbox_from_key(fname: str, network_type: str) -> tuple | None:
+    """Recover the (west, south, east, north) a cached graph file was built for.
+
+    Ad-hoc caches are named ``bbox_<w>_<s>_<e>_<n>_<network>.graphml`` with the
+    sign written as ``m`` and the decimal point as ``p``, so the bbox is
+    readable straight off the filename and needs no sidecar index.
+    """
+    suffix = f"_{network_type}.graphml"
+    if not fname.startswith("bbox_") or not fname.endswith(suffix):
+        return None
+    parts = fname[len("bbox_"):-len(suffix)].split("_")
+    if len(parts) != 4:
+        return None
+    try:
+        return tuple(float(p.replace("m", "-").replace("p", ".")) for p in parts)
+    except ValueError:
+        return None
+
+
+def _covering_cache(bbox: tuple[float, float, float, float], data_dir: str,
+                    network_type: str) -> str | None:
+    """Path of the smallest cached graph whose bbox fully contains ``bbox``."""
+    w, s, e, n = bbox
+    best, best_area = None, None
+    try:
+        names = os.listdir(data_dir)
+    except OSError:
+        return None
+    for fname in names:
+        cached = _bbox_from_key(fname, network_type)
+        if not cached:
+            continue
+        cw, cs, ce, cn = cached
+        if cw <= w and cs <= s and ce >= e and cn >= n:
+            area = (ce - cw) * (cn - cs)
+            if best_area is None or area < best_area:
+                best, best_area = os.path.join(data_dir, fname), area
+    return best
 
 
 def _ensure_edge_geometry(G: nx.MultiDiGraph) -> None:
