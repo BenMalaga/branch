@@ -37,16 +37,28 @@ tree census is a New York dataset, so asking for shade routing outside New York
 returns an error naming the source and its extent, rather than an empty result
 that would read as "no shade anywhere".
 
-## Quickstart
+## Try it
+
+**[planwithbranch.com](https://planwithbranch.com)** - nothing to install, no
+account, no key. Open it and press "Try an example" to see it pull real
+OpenStreetMap data and map it.
+
+It works on any area with OpenStreetMap coverage. Address search uses
+OpenStreetMap Nominatim, and the fiscal tools ship with editable US public
+unit-cost defaults.
+
+## Run your own copy
+
+You only need this if you want to host it yourself, work offline, or develop on
+it. Requires Python 3.11 or newer.
 
 ```bash
 pip install -e ".[full]"
 branch serve
 ```
 
-Open http://localhost:8000 and point it at any area with OpenStreetMap coverage.
-Address search uses OpenStreetMap Nominatim; the fiscal tools ship with editable
-US public unit-cost defaults.
+That serves the same app at `http://localhost:8000`. A `Dockerfile` and a
+`render.yaml` are included if you would rather deploy it somewhere.
 
 ## The assistant is optional
 
