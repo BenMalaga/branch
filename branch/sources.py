@@ -29,6 +29,13 @@ SOURCES: dict[str, Source] = {
         vintage="2015",
         attribution="City of New York, via the Socrata open data API",
     ),
+    "us_census_geography": Source(
+        id="us_census_geography",
+        title="US Census TIGERweb geography",
+        extent=(-179.15, 17.8, -64.5, 71.5),      # 50 states, DC and territories
+        vintage="2020",
+        attribution="US Census Bureau, TIGERweb",
+    ),
     "osm": Source(
         id="osm",
         title="OpenStreetMap",

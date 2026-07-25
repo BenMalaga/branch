@@ -273,6 +273,102 @@ register(Tool(
     run=_run_boundary))
 
 
+CENSUS_BASE = ("https://tigerweb.geo.census.gov/arcgis/rest/services/Census2020/"
+               "tigerWMS_Census2020/MapServer")
+CENSUS_LEVELS = {                     # plain name -> TIGERweb layer id
+    "tract": 6, "block group": 8, "block": 10,
+    "county subdivision": 20, "place": 26, "county": 82, "state": 80,
+}
+CENSUS_CAP = 3000
+
+
+def _run_census_geo(params: dict) -> dict:
+    """Official census geography for an area, with GEOID on every feature.
+
+    Planners argue in tracts and block groups, not in hexagons, and GEOID is the
+    key that joins any census or assessor table to a shape. Free and key-free.
+    """
+    import json as _json
+    import requests
+    from . import sources
+
+    bbox = params["bbox"]
+    level = str(params.get("level", "tract")).strip().lower()
+    if level not in CENSUS_LEVELS:
+        raise ValueError(f"{level!r} is not a census level. Choose one of: "
+                         + ", ".join(sorted(CENSUS_LEVELS)) + ".")
+    sources.require("us_census_geography", tuple(bbox))
+
+    w, s_, e, n = bbox
+    envelope = _json.dumps({"xmin": w, "ymin": s_, "xmax": e, "ymax": n,
+                            "spatialReference": {"wkid": 4326}})
+    layer = CENSUS_LEVELS[level]
+    common = {"where": "1=1", "geometry": envelope,
+              "geometryType": "esriGeometryEnvelope", "inSR": 4326, "outSR": 4326}
+
+    # A view bigger than this cannot be answered usefully, and asking the census
+    # service to count it just times out slowly. Refuse fast and say why.
+    span = abs(e - w) * abs(n - s_)
+    MAX_SPAN = {"block": 0.02, "block group": 0.2, "tract": 1.0,
+                "county subdivision": 4.0, "place": 8.0,
+                "county": 60.0, "state": 4000.0}[level]
+    if span > MAX_SPAN:
+        raise ValueError(f"That view is too large to pull {level}s for. Zoom in, "
+                         f"or choose a coarser level such as "
+                         f"{'county' if level != 'county' else 'state'}.")
+
+    # Ask how many first: a silent truncation is worse than a refusal.
+    try:
+        probe = requests.get(f"{CENSUS_BASE}/{layer}/query",
+                             params={**common, "returnCountOnly": "true", "f": "json"},
+                             timeout=25)
+        probe.raise_for_status()
+        count = int(probe.json().get("count", 0))
+    except requests.exceptions.Timeout:
+        raise ValueError(f"The census service took too long to count the {level}s "
+                         f"in this view. Zoom in and try again.") from None
+    if count == 0:
+        raise ValueError(f"No census {level}s fall in this view. If you are "
+                         f"outside the United States, this source does not reach.")
+    if count > CENSUS_CAP:
+        raise ValueError(f"That view covers {count:,} {level}s, more than the "
+                         f"{CENSUS_CAP:,} branch will fetch at once. Zoom in, or "
+                         f"choose a coarser level such as tract or county.")
+
+    r = requests.get(f"{CENSUS_BASE}/{layer}/query",
+                     params={**common, "outFields": "GEOID,NAME,BASENAME",
+                             "returnGeometry": "true", "geometryPrecision": 6,
+                             "f": "geojson"}, timeout=90)
+    r.raise_for_status()
+    fc = r.json()
+    feats = fc.get("features") or []
+    if not feats:
+        raise ValueError(f"The census service returned no {level} shapes for this view.")
+    return {"result": {"type": "FeatureCollection", "features": feats},
+            "recipe": {"tool": "census_geo", "level": level, "bbox": list(bbox),
+                       "features": len(feats), "vintage": "2020",
+                       "source": "US Census Bureau TIGERweb"}}
+
+
+register(Tool(
+    id="census_geo", title="Official census areas", noun="Census areas",
+    category="map data", returns="layer",
+    description="Fetch official US census geography for the current view: "
+                "tracts, block groups, blocks, places, county subdivisions, "
+                "counties or states. Every shape carries its GEOID, which is the "
+                "key that joins census, ACS or assessor tables to the map. Use it "
+                "when an analysis has to be reported in the units a council or a "
+                "grant expects. United States only.",
+    params={"type": "object", "required": ["bbox"], "properties": {
+        "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                 "maxItems": 4, "description": "[west, south, east, north] in degrees"},
+        "level": {"type": "string",
+                  "enum": ["tract", "block group", "block", "county subdivision",
+                           "place", "county", "state"],
+                  "default": "tract"}}},
+    run=_run_census_geo))
+
+
 def _run_filter(params: dict) -> dict:
     """Keep only the features whose attribute passes a test."""
     gdf = _read_fc(params["layer"])

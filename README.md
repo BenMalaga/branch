@@ -25,7 +25,7 @@ and a function the optional assistant can call.
 | Money | what will this cost to build, which land pays for itself (value per acre), is it worth it (payback and ROI) |
 | Getting around | what is within a short walk (walkshed), find the shadiest walk |
 | Safety | what is too close to utility lines |
-| Map data | OpenStreetMap features, real jurisdiction borders (county, city, borough, neighborhood) |
+| Map data | OpenStreetMap features, real jurisdiction borders (county, city, borough, neighborhood), official US census geography (tracts, block groups, blocks, places) with GEOID |
 | Shaping layers | everything within a distance, trim to an area, combine two layers, keep only what matches, where is it most concentrated, is this cluster real (Getis-Ord Gi\* with a false-discovery correction) |
 | Overlays | buildings in 3D, roads, water, green cover, land use, infrastructure, boundaries, addresses and places, streamed worldwide from Overture Maps, plus dated historical satellite imagery back to 2014 |
 
