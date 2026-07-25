@@ -125,8 +125,13 @@ def run_tool(tool_id):
     tool = registry.get(tool_id)
     if tool is None:
         return jsonify({"error": f"unknown tool {tool_id}"}), 404
+    params = request.get_json(force=True, silent=True) or {}
     try:
-        return jsonify(tool.run(request.get_json(force=True, silent=True) or {}))
+        registry.validate_params(tool, params)
+    except registry.ParamError as e:
+        return jsonify({"error": str(e)}), 400
+    try:
+        return jsonify(tool.run(params))
     except Exception as e:
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 400
 

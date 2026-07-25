@@ -56,6 +56,7 @@ def run_agent(question: str, llm: dict, context: dict | None = None,
                 out = {"error": f"unknown tool {call['name']}"}
             else:
                 try:
+                    registry.validate_params(tool, call["input"])
                     out = tool.run(call["input"])
                     if tool.returns == "layer" and isinstance(out.get("result"), dict):
                         layers.append({"tool": tool.id, "geojson": out["result"]})

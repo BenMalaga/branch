@@ -33,6 +33,68 @@ class Tool:
 _REGISTRY: dict[str, Tool] = {}
 
 
+class ParamError(ValueError):
+    """Raised when a tool is called with inputs its own schema does not allow."""
+
+
+_TYPE_OK = {
+    "object": lambda v: isinstance(v, dict),
+    "array": lambda v: isinstance(v, list),
+    "string": lambda v: isinstance(v, str),
+    "boolean": lambda v: isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+}
+
+
+def validate_params(tool: "Tool", params: dict) -> dict:
+    """Check ``params`` against the tool's declared schema before running it.
+
+    Every tool publishes a typed input contract; this is what makes it true at
+    call time. Without it a missing or mistyped input surfaces as whatever the
+    geometry library happens to raise ten frames later, which tells the caller
+    nothing about what they got wrong.
+    """
+    schema = tool.params or {}
+    props = schema.get("properties") or {}
+
+    for key in schema.get("required") or []:
+        if params.get(key) is None:
+            hint = (props.get(key) or {}).get("description")
+            raise ParamError(f"{tool.id} needs '{key}'"
+                             + (f": {hint}." if hint else "."))
+
+    for key, spec in props.items():
+        if params.get(key) is None:
+            continue
+        value, want = params[key], spec.get("type")
+        check = _TYPE_OK.get(want)
+        if check and not check(value):
+            raise ParamError(f"'{key}' must be {want}, but got "
+                             f"{type(value).__name__}.")
+        if spec.get("enum") and value not in spec["enum"]:
+            raise ParamError(f"'{key}' must be one of: "
+                             f"{', '.join(str(o) for o in spec['enum'])}. "
+                             f"Got {value!r}.")
+        if want == "array":
+            lo, hi = spec.get("minItems"), spec.get("maxItems")
+            if lo is not None and len(value) < lo:
+                raise ParamError(f"'{key}' needs at least {lo} values, "
+                                 f"got {len(value)}.")
+            if hi is not None and len(value) > hi:
+                raise ParamError(f"'{key}' takes at most {hi} values, "
+                                 f"got {len(value)}.")
+            item_type = (spec.get("items") or {}).get("type")
+            item_check = _TYPE_OK.get(item_type)
+            if item_check and not all(item_check(x) for x in value):
+                raise ParamError(f"every value in '{key}' must be {item_type}.")
+        if (want == "object" and value.get("type") == "FeatureCollection"
+                and not isinstance(value.get("features"), list)):
+            raise ParamError(f"'{key}' is a FeatureCollection with no "
+                             f"'features' list.")
+    return params
+
+
 def register(tool: Tool) -> Tool:
     _REGISTRY[tool.id] = tool
     return tool
