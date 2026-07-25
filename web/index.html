@@ -267,7 +267,7 @@ function baseStyle(b){return {version:8,sources:{base:{type:"raster",tiles:BASEM
 function init(){
   if(window.pmtiles&&maplibregl.addProtocol) maplibregl.addProtocol("pmtiles",new pmtiles.Protocol().tile);
   map=new maplibregl.Map({container:"map",style:baseStyle("dark"),center:[-73.98,40.672],zoom:13});
-  map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
+  map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),"bottom-right");
   new ResizeObserver(()=>map.resize()).observe($("mapwrap"));
   map.on("style.load",restyleLayers);
   map.on("click",onMapClick);
@@ -697,7 +697,13 @@ window.toggleOverlay=id=>{
   const ov=OVERLAYS.find(o=>o.id===id); if(!ov) return;
   if(activeOverlays.has(id)){ activeOverlays.delete(id); removeOverlay(ov); }
   else{
-    try{ addOverlay(ov); activeOverlays.add(id); }
+    try{
+      addOverlay(ov);
+      activeOverlays.add(id);
+      // Extruded buildings are invisible from straight above, so lean the camera
+      // once, and only if the user has not already chosen an angle.
+      if(id==="buildings"&&map.getPitch()===0) map.easeTo({pitch:50,duration:700});
+    }
     catch(e){
       // Failing quietly would look like a dead button, so say what happened.
       activeOverlays.delete(id);
