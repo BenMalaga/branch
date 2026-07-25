@@ -607,6 +607,94 @@ def _run_density(params: dict) -> dict:
             "recipe": {"tool": "density_hexbin", "resolution": res, "cells": len(feats)}}
 
 
+def _run_hotspots(params: dict) -> dict:
+    """Which clusters are real, and which are noise.
+
+    Aggregates to H3 like the density tool, then runs Getis-Ord Gi* with
+    permutation p-values and a false-discovery correction, so each cell is
+    labelled with a confidence rather than just a colour.
+    """
+    import h3
+    import numpy as np
+    from collections import defaultdict
+    from . import stats
+
+    gdf = _read_fc(params["layer"]).to_crs(config.WGS84)
+    res = int(params.get("resolution", 8))
+    field = params.get("value_field")
+    perms = max(99, min(int(params.get("permutations", 199)), 999))
+    seed = int(params.get("seed", 0))
+
+    bucket = defaultdict(list)
+    for geom, row in zip(gdf.geometry, gdf.to_dict("records")):
+        if geom is None or geom.is_empty:
+            continue
+        pt = geom if geom.geom_type == "Point" else geom.centroid
+        cell = h3.latlng_to_cell(pt.y, pt.x, res)
+        if field:
+            v = row.get(field)
+            try:
+                bucket[cell].append(float(v))
+            except (TypeError, ValueError):
+                continue          # a row with no usable number adds nothing
+        else:
+            bucket[cell].append(1.0)
+
+    cells = sorted(bucket)
+    if not cells:
+        raise ValueError("Nothing landed in a cell. Check the layer has points "
+                         "and, if you named a value field, that it holds numbers.")
+    values = np.array([sum(bucket[c]) for c in cells], dtype=np.float64)
+
+    w = stats.neighbor_matrix(cells)
+    out = stats.getis_ord(values, w, permutations=perms, seed=seed)
+
+    feats = []
+    for i, cell in enumerate(cells):
+        ring = [[lng, lat] for lat, lng in h3.cell_to_boundary(cell)]
+        ring.append(ring[0])
+        feats.append({"type": "Feature", "properties": {
+            "h3": cell,
+            "value": round(float(values[i]), 4),
+            "z_score": round(float(out["z"][i]), 3),
+            "p_value": round(float(out["p"][i]), 5),
+            "p_permutation": round(float(out["p_perm"][i]), 4),
+            "significance": out["classes"][i],
+        }, "geometry": {"type": "Polygon", "coordinates": [ring]}})
+
+    hot = sum(1 for c in out["classes"] if c.startswith("hot"))
+    cold = sum(1 for c in out["classes"] if c.startswith("cold"))
+    return {"result": {"type": "FeatureCollection", "features": feats},
+            "recipe": {"tool": "hotspots", "resolution": res,
+                       "value_field": field or "count of features",
+                       "permutations": perms, "seed": seed,
+                       "cells": len(cells), "hot_cells": hot, "cold_cells": cold,
+                       "method": "Getis-Ord Gi*; significance from the analytic "
+                                 "z-score corrected for multiple testing "
+                                 "(Benjamini-Hochberg); a permutation p-value is "
+                                 "reported alongside as a robustness check",
+                       "permutation_p_floor": round(1.0 / (perms + 1.0), 4)}}
+
+
+register(Tool(
+    id="hotspots", title="Is this cluster real?", noun="Hot and cold spots",
+    category="shaping layers", returns="layer",
+    description="Tests whether the clusters in a layer are more than chance. "
+                "Groups features into hexagons and labels each one hot, cold or "
+                "not significant with a confidence level, so a finding can stand "
+                "up in a hearing or a grant application rather than just looking "
+                "convincing. Also called Getis-Ord Gi*, or hot spot analysis.",
+    params={"type": "object", "required": ["layer"], "properties": {
+        "layer": {"type": "object", "description": "the point layer to test"},
+        "value_field": {"type": "string",
+                        "description": "number to test, e.g. value or complaints. "
+                                       "Leave empty to test how many features fall in each cell"},
+        "resolution": {"type": "integer", "description": "H3 resolution 7-10 (default 8)"},
+        "permutations": {"type": "integer", "description": "randomisations, default 199"},
+        "seed": {"type": "integer", "description": "seed, so the same run repeats exactly"}}},
+    run=_run_hotspots))
+
+
 register(Tool(
     id="density_hexbin", title="Where is it most concentrated?", noun="Density", category="shaping layers", returns="layer",
     description="Groups points into hexagons and colors them by how many fall in "

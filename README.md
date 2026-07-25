@@ -25,6 +25,7 @@ and a function the optional assistant can call.
 | Planning | CoolWalk shade routing, walkshed (15-minute-city isochrone), utility clearance check |
 | Fiscal | cost estimate, value per acre, benefit-cost / ROI |
 | Geoprocessing | buffer, spatial join, clip to an area, filter by attribute, density hotspots |
+| Statistics | hot and cold spot analysis (Getis-Ord Gi\*) with a false-discovery correction, so a cluster is tested rather than just coloured |
 | Data | OpenStreetMap features, real jurisdiction borders (county, city, borough, neighborhood), dated historical satellite imagery (2014 to now) |
 | Overlays | Buildings in 3D, roads, water, green cover, land use, infrastructure, boundaries, addresses and places, streamed worldwide from Overture Maps |
 
