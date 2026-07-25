@@ -110,6 +110,9 @@
   .layer .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .layer input{accent-color:var(--accent)}
   .layer .x{color:var(--faint);border:none;background:none;font-size:16px;line-height:1}
+  .layer .dl{color:var(--faint);border:none;background:none;padding:2px;line-height:0;border-radius:7px}
+  .layer .dl svg{width:15px;height:15px}
+  .layer .dl:hover{color:var(--accent)}
   .layer .x:hover{color:var(--ink)}
   .legend{margin:1px 0 11px 22px}
   .legend .lgtop{color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin-bottom:4px}
@@ -151,7 +154,7 @@
     #dhint{bottom:56px}}
   @media (pointer:coarse){
     #basemaps button,#draw button{min-height:44px;padding-left:14px;padding-right:14px}
-    .layer .x{min-width:44px;min-height:44px}}
+    .layer .x,.layer .dl{min-width:44px;min-height:44px}}
   .dh{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
   .dh h3{margin:0;font-size:15px}
   .db{padding:18px 20px;max-height:74vh;overflow-y:auto}
@@ -443,11 +446,12 @@ function layersHTML(){
   if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
   return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
     +`<button class="btn wide" onclick="copyShareLink(this)" style="margin-bottom:14px">Copy a link that rebuilds this</button>`
-    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><span class="nm">${esc(l.name)}</span><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("");
+    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><span class="nm">${esc(l.name)}</span><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("");
 }
 function wireLayers(){
   document.querySelectorAll(".lvis").forEach(c=>c.onchange=()=>{ const L=layers[+c.dataset.i]; L.visible=c.checked; setVis(L); });
   document.querySelectorAll(".layer .x").forEach(b=>b.onclick=()=>removeLayer(layers[+b.dataset.i]));
+  document.querySelectorAll(".layer .dl").forEach(b=>b.onclick=()=>downloadLayer(+b.dataset.i));
 }
 
 // ---------- DATA ----------
@@ -490,7 +494,13 @@ function wireDraw(){
   });
   $("dfin").onclick=()=>finishDraw();
   map.on("dblclick",finishDraw);
-  document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&drawMode){ drawPts=[]; drawPreview(); syncDrawUI(); } });
+  // A non-modal dialog gets no free Escape handling, so wire it up ourselves.
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape") return;
+    const dlg=document.querySelector("dialog.tool[open]");
+    if(dlg){ pickTarget=null; if(!drawMode) map.getCanvas().style.cursor=""; dlg.close(); dlg.remove(); syncDrawUI(); return; }
+    if(drawMode){ drawPts=[]; drawPreview(); syncDrawUI(); }
+  });
 }
 function setDrawMode(m){
   drawMode=m; drawPts=[];
@@ -595,6 +605,18 @@ function valueHTML(res,recipe){
     +(recipe?`<details class="vrec"><summary>How this was computed</summary><div class="recipe">${esc(JSON.stringify(recipe,null,2))}</div></details>`:"")
     +`</div>`;
 }
+
+// Results have to be able to leave. GeoJSON opens directly in ArcGIS and QGIS,
+// which is the whole point of sitting beside them rather than replacing them.
+window.downloadLayer=i=>{
+  const L=layers[i]; if(!L) return;
+  const name=(L.name||"layer").replace(/[^a-z0-9]+/gi,"_").replace(/^_|_$/g,"").toLowerCase()||"layer";
+  const url=URL.createObjectURL(new Blob([JSON.stringify(L.geojson)],{type:"application/geo+json"}));
+  const a=document.createElement("a");
+  a.href=url; a.download=name+".geojson";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+};
 
 // ---------- shareable, re-runnable analysis ----------
 // A link carries the recipe, not the data: opening it re-runs the same tools
