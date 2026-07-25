@@ -52,7 +52,7 @@ SYSTEM = (
 
 
 def run_agent(question: str, llm: dict, context: dict | None = None,
-              max_steps: int = 12) -> dict:
+              max_steps: int = 12, history: list | None = None) -> dict:
     """Run the tool-calling loop. Returns {answer, steps, layers}."""
     tools = registry.as_llm_tools()
     provider = (llm or {}).get("provider", "anthropic")
@@ -61,7 +61,16 @@ def run_agent(question: str, llm: dict, context: dict | None = None,
                 "error": f"The '{provider}' provider needs your own API key "
                          "(bring-your-own; it is never stored). Add a key, or "
                          "switch to the free local 'ollama' provider."}
-    messages = [{"role": "user", "content": question}]
+    # Carry the conversation so follow-ups work ("now clip that to the Bronx",
+    # "what about 20 minutes instead"). Only plain turns are replayed: tool call
+    # blocks are provider-shaped and are rebuilt fresh each request.
+    messages = []
+    for turn in (history or [])[-8:]:
+        role = turn.get("role")
+        text = (turn.get("content") or "").strip()
+        if role in ("user", "assistant") and text:
+            messages.append({"role": role, "content": text})
+    messages.append({"role": "user", "content": question})
     steps, layers = [], []
 
     for _ in range(max_steps):

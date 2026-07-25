@@ -209,7 +209,8 @@ def agent_endpoint():
         return jsonify({"error": "question is required"}), 400
     try:
         return jsonify(agent.run_agent(body["question"], body.get("llm") or {},
-                                       body.get("context")))
+                                       body.get("context"),
+                                       history=body.get("history") or []))
     except Exception as e:
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 502
 

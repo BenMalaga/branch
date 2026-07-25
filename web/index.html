@@ -88,7 +88,16 @@
   .btn:disabled:hover{background:var(--surface);border-color:var(--line2)}
   .row{display:flex;gap:8px}
 
+  #thread{max-height:46vh;overflow-y:auto;margin:0 0 14px;border-radius:12px}
+  #thread:empty{display:none}
+  #thread.drop{outline:2px dashed var(--accent);outline-offset:3px}
   .msg{font-size:13px;line-height:1.55;margin:10px 0;padding:11px 13px;border-radius:12px}
+  .steps{margin-top:8px}
+  .steps summary{font-size:11px;color:var(--faint);cursor:pointer}
+  .steps summary:hover{color:var(--muted)}
+  .stepline{margin-top:5px;font-size:11px;color:var(--muted);line-height:1.45}
+  .stepline b{color:var(--ink);font-weight:600;display:block}
+  .stepline span{font-family:var(--mono);font-size:10.5px;word-break:break-word}
   .msg.you{background:var(--surface-3);border:1px solid var(--line)}
   .msg.branch{background:var(--accent-soft);border:1px solid rgba(142,211,166,.22)}
   .recipe{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
@@ -104,6 +113,12 @@
     border-radius:6px;padding:2px 7px;text-transform:capitalize}
   .rbreak b{color:var(--ink);font-weight:600}
   .rnote{margin-top:10px;font-size:10.5px;color:var(--faint);line-height:1.45}
+  .sv{padding:11px 0;border-bottom:1px solid var(--line)}
+  .sv input.nm{width:100%;background:none;border:1px solid transparent;border-radius:7px;color:var(--ink);
+    font:inherit;font-size:13px;font-weight:600;padding:3px 6px}
+  .sv input.nm:hover{border-color:var(--line2)}
+  .sv input.nm:focus{border-color:var(--accent);background:var(--field);outline:none}
+  .svmeta{font-size:11px;color:var(--faint);margin:2px 0 6px 6px}
   .astep{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)}
   .astep:last-of-type{border-bottom:none}
   .anum{flex:none;width:21px;height:21px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
@@ -268,8 +283,9 @@
     <button class="rb" data-t="tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h7M15 17h5"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="17" r="2"/></svg>Tools</button>
     <button class="rb" data-t="layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>Layers</button>
     <button class="rb" data-t="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Data</button>
+    <button class="rb" data-t="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v16l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>Saved</button>
   </nav>
-  <aside id="panel"><div id="body"><section id="p-ask" hidden></section><section id="p-tools" hidden></section><section id="p-layers" hidden></section><section id="p-data" hidden></section></div></aside>
+  <aside id="panel"><div id="body"><section id="p-ask" hidden></section><section id="p-tools" hidden></section><section id="p-layers" hidden></section><section id="p-data" hidden></section><section id="p-saved" hidden></section></div></aside>
   <div id="mapwrap">
     <div id="map"></div>
     <div id="search" class="mapctl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="q" placeholder="Search an address or place..." autocomplete="off"></div>
@@ -502,13 +518,14 @@ function getTab(){ return document.querySelector(".rb.on")?.dataset.t; }
 let askReady=false, openToolId=null;
 function showTab(t){
   document.querySelectorAll(".rb").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
-  ["ask","tools","layers","data"].forEach(k=>{ const el=$("p-"+k); if(el) el.hidden=(k!==t); });
+  ["ask","tools","layers","data","saved"].forEach(k=>{ const el=$("p-"+k); if(el) el.hidden=(k!==t); });
   // The Ask panel holds a conversation, so it is built once and kept. Rebuilding
   // it on every tab switch was throwing the thread away.
   if(t==="ask"){ if(!askReady){ $("p-ask").innerHTML=askHTML(); wireAsk(); askReady=true; } }
   else if(t==="tools") renderTools();
   else if(t==="layers"){ $("p-layers").innerHTML=layersHTML(); wireLayers(); }
   else if(t==="data"){ $("p-data").innerHTML=dataHTML(); wireData(); }
+  else if(t==="saved"){ $("p-saved").innerHTML=savedHTML(); wireSaved(); }
 }
 // A tool is a view inside the Tools tab, not a window floating over the app, so
 // leaving it is just going somewhere else and coming back finds it as you left it.
@@ -522,16 +539,25 @@ window.closeTool=()=>{ openToolId=null; pickTarget=null; if(!drawMode&&map) map.
 
 // ---------- ASK ----------
 function askHTML(){ return `
+  <div id="thread" role="log" aria-live="polite"></div>
   <h3>Ask the map</h3>
   <p class="sub">Ask a city-planning question in plain English. branch's agent runs real, verified tools and shows the answer plus a re-runnable recipe.</p>
   <textarea class="field" id="q2" placeholder="e.g. Estimate the cost to plant 20 trees along this street and their 20-year ROI."></textarea>
-  <div class="row" style="margin-top:9px"><button class="btn pri wide" id="askBtn">Ask branch</button></div>
+  <div class="row" style="margin-top:9px">
+    <button class="btn pri" id="askBtn" style="flex:1">Ask branch</button>
+    <label class="btn" title="Attach a GeoJSON or CSV" style="line-height:35px;cursor:pointer">Attach<input type="file" id="chatFile" accept=".geojson,.json,.csv" hidden></label>
+  </div>
   <p class="sub" style="margin-top:10px">Asking a question needs an AI key, added under AI settings (top right). It stays in your browser. Without one, every tool on the Tools tab still works, and the example below runs a real analysis.</p>
   <div class="cat">No AI key? See it work</div>
   <button class="btn wide" onclick="runExample()">Try an example</button>
   <p class="sub" style="margin-top:8px">Loads real OpenStreetMap data for a block of Manhattan and maps how dense it is. No key needed, and it leaves a layer on the map so the other tools have something to work on.</p>
   <div id="thread" role="log" aria-live="polite"></div>`; }
-function wireAsk(){ $("askBtn").onclick=ask; $("q2").addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter")ask();}); }
+function wireAsk(){
+  $("askBtn").onclick=ask;
+  $("q2").addEventListener("keydown",e=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") ask(); });
+  const cf=$("chatFile"); if(cf) cf.onchange=e=>{ readFile(e.target.files[0]); cf.value=""; };
+  wireChatDrop();
+}
 async function callTool(id,params){
   const r=await fetch(`/api/tools/${id}/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params)});
   const d=await r.json();
@@ -557,30 +583,66 @@ window.runExample=async()=>{
     if(th) th.insertAdjacentHTML("beforeend",`<div class="msg err">Example failed: ${esc(e.message||"request failed")}</div>`);
   }finally{ setLoading(false); }
 };
+// The conversation, kept so follow-ups make sense ("now clip that to the Bronx").
+let chat=[];
+function pushMsg(role,html,cls){
+  const th=$("thread"); if(!th) return;
+  th.insertAdjacentHTML("beforeend",`<div class="msg ${cls||role}">${html}</div>`);
+  th.scrollTop=th.scrollHeight;
+}
+function stepsHTML(steps){
+  if(!steps||!steps.length) return "";
+  return `<details class="steps"><summary>${steps.length} step${steps.length===1?"":"s"} run</summary>`
+    +steps.map((st,i)=>`<div class="stepline"><b>${i+1}. ${esc(st.tool)}</b>`
+      +`<span>${esc(JSON.stringify(st.recipe||st.params||{}).slice(0,150))}</span></div>`).join("")
+    +`</details>`;
+}
 async function ask(){
   const q=$("q2").value.trim(); if(!q)return;
-  const th=$("thread");
-  th.insertAdjacentHTML("beforeend",`<div class="msg you">${esc(q)}</div>`);
+  pushMsg("you",esc(q));
+  chat.push({role:"user",content:q});
   $("q2").value="";
   setLoading(true,"branch is reasoning...");
   try{
-    const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q,llm:llmConfig(),context:{layers:layers.map(l=>l.name)}})});
+    const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q,llm:llmConfig(),history:chat.slice(0,-1),context:{layers:layers.map(l=>l.name)}})});
     const d=await r.json();
     if(d.error){
       // A missing key is the most common first-run failure, so answer it with
       // the two ways out rather than just restating the problem.
       const needsKey=/key|provider|ollama/i.test(d.error);
-      th.insertAdjacentHTML("beforeend",`<div class="msg err">${esc(d.error)}`
-        +(needsKey?`<div class="row" style="margin-top:10px"><button class="btn" onclick="document.getElementById('setBtn').click()">Add a key</button><button class="btn" onclick="runExample()">Try an example instead</button></div>`:"")
-        +`</div>`);
+      pushMsg("err",esc(d.error)
+        +(needsKey?`<div class="row" style="margin-top:10px"><button class="btn" onclick="document.getElementById('setBtn').click()">Add a key</button><button class="btn" onclick="runExample()">Try an example instead</button></div>`:""),"err");
     }
     else{
-      (d.layers||[]).forEach((ly,i)=>{ if(ly.geojson&&ly.geojson.features) addLayer(ly.tool||("result "+i),ly.geojson,{fit:i===0}); });
-      const recipe=(d.steps||[]).map(s=>`${s.tool}(${JSON.stringify(s.params).slice(0,80)})`).join("\n");
-      th.insertAdjacentHTML("beforeend",`<div class="msg branch">${esc(d.answer||"Done.")}${recipe?`<div class="recipe">${esc(recipe)}</div>`:""}</div>`);
+      (d.layers||[]).forEach((ly,i)=>{
+        if(!ly.geojson||!ly.geojson.features) return;
+        const t=tools.find(x=>x.id===ly.tool);
+        addLayer((t&&t.noun)||ly.tool||("result "+i),ly.geojson,{fit:i===0,src:{t:ly.tool,p:{}}});
+      });
+      const answer=d.answer||"Done.";
+      pushMsg("branch",esc(answer)+stepsHTML(d.steps));
+      chat.push({role:"assistant",content:answer});   // so the next turn has context
     }
-  }catch(e){ th.insertAdjacentHTML("beforeend",`<div class="msg err">Could not reach the server.</div>`); }
-  setLoading(false); th.lastElementChild&&th.lastElementChild.scrollIntoView({block:"nearest"});
+  }catch(e){ pushMsg("err","Could not reach the server.","err"); }
+  setLoading(false);
+}
+
+// Files can be dropped straight into the conversation, the same as the Data tab.
+function wireChatDrop(){
+  const th=$("thread"); if(!th) return;
+  const stop=e=>{ e.preventDefault(); e.stopPropagation(); };
+  th.addEventListener("dragover",e=>{ stop(e); th.classList.add("drop"); });
+  th.addEventListener("dragleave",()=>th.classList.remove("drop"));
+  th.addEventListener("drop",e=>{
+    stop(e); th.classList.remove("drop");
+    const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(f) readFile(f);
+  });
+}
+// Uploaded data is part of the conversation: say so, and tell the model it exists.
+function noteUpload(name,count){
+  pushMsg("you",`Added <b>${esc(name)}</b> as a layer (${count} feature${count===1?"":"s"}).`);
+  chat.push({role:"user",content:`I uploaded a layer called "${name}" with ${count} features. It is on the map and available to the tools.`});
 }
 
 // ---------- TOOLS ----------
@@ -719,6 +781,90 @@ function wireLayers(){
   });
 }
 
+// ---------- SAVED WORK ----------
+// A place to keep a piece of work: the view, the layers and how each one was
+// built. Stored in this browser, and exportable, so nothing is trapped here and
+// no account is needed.
+const SAVED_KEY="branch_saved";
+function loadSaved(){ try{ return JSON.parse(localStorage.getItem(SAVED_KEY)||"[]"); }catch(e){ return []; } }
+function putSaved(list){ try{ localStorage.setItem(SAVED_KEY,JSON.stringify(list)); }catch(e){
+  pushMsg("err","This browser would not store that (it may be out of space).","err"); } }
+window.saveCurrent=()=>{
+  const inp=$("saveName");
+  const name=((inp&&inp.value.trim())||"")||`Untitled, ${new Date().toLocaleString()}`;
+  const {st,skipped}=shareState();
+  const list=loadSaved();
+  list.unshift({id:"sv"+Date.now(), name, when:new Date().toISOString(),
+                st, skipped, layers:st.l.length});
+  putSaved(list);
+  if(inp) inp.value="";
+  showTab("saved");
+};
+window.openSaved=id=>{
+  const item=loadSaved().find(x=>x.id===id); if(!item) return;
+  layers.slice().forEach(L=>removeLayer(L));      // start from a clean map
+  reportGeom=null;
+  replayState(item.st);
+};
+window.deleteSaved=id=>{ putSaved(loadSaved().filter(x=>x.id!==id)); showTab("saved"); };
+window.renameSaved=(id,v)=>{
+  const list=loadSaved(); const it=list.find(x=>x.id===id);
+  if(!it) return; const name=String(v).trim(); if(!name) return;
+  it.name=name; putSaved(list);
+};
+window.copySavedLink=async id=>{
+  const item=loadSaved().find(x=>x.id===id); if(!item) return;
+  const url=location.origin+location.pathname+"#s="+b64(JSON.stringify(item.st));
+  try{ await navigator.clipboard.writeText(url); }catch(e){}
+  const n=$("savedNote"); if(n){ n.hidden=false; n.textContent="Link copied. It rebuilds this by re-running the same tools."; }
+};
+window.exportSaved=id=>{
+  const item=loadSaved().find(x=>x.id===id); if(!item) return;
+  const blob=new Blob([JSON.stringify(item,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=(item.name||"analysis").replace(/[^a-z0-9]+/gi,"_").toLowerCase()+".branch.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+};
+window.importSaved=f=>{
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+      const item=JSON.parse(r.result);
+      if(!item||!item.st) throw new Error("that is not a branch file");
+      item.id="sv"+Date.now();
+      const list=loadSaved(); list.unshift(item); putSaved(list); showTab("saved");
+    }catch(e){ pushMsg("err","Could not read that saved file: "+esc(e.message),"err"); showTab("ask"); } };
+  r.readAsText(f);
+};
+function savedHTML(){
+  const list=loadSaved();
+  const canSave=layers.some(l=>l.src);
+  return `<h3>Saved work</h3>`
+    +`<p class="sub">Keep a view and its layers, reopen it later, send it to someone, or take it with you as a file.</p>`
+    +`<div class="row"><input class="field" id="saveName" placeholder="Name this analysis" style="flex:1">`
+    +`<button class="btn pri" onclick="saveCurrent()" ${canSave?"":"disabled title='Run a tool or add a layer first'"}>Save</button></div>`
+    +`<p class="sub" id="savedNote" hidden style="margin-top:8px"></p>`
+    +(list.length?list.map(x=>`<div class="sv">`
+        +`<input class="nm" value="${esc(x.name)}" onchange="renameSaved('${x.id}',this.value)" aria-label="Name of this saved analysis">`
+        +`<div class="svmeta">${x.layers} layer${x.layers===1?"":"s"} &middot; ${esc(new Date(x.when).toLocaleString())}`
+        +`${x.skipped?` &middot; ${x.skipped} not reproducible`:""}</div>`
+        +`<div class="lctl" style="margin-left:0">`
+          +`<button type="button" onclick="openSaved('${x.id}')">Open</button>`
+          +`<button type="button" onclick="copySavedLink('${x.id}')">Link</button>`
+          +`<button type="button" onclick="exportSaved('${x.id}')">Export</button>`
+          +`<button type="button" onclick="deleteSaved('${x.id}')">Delete</button>`
+        +`</div></div>`).join("")
+      :`<div class="empty" style="margin-top:14px">Nothing saved yet.<br>Build something on the map, then save it here.</div>`)
+    +`<div class="cat">Bring one back</div>`
+    +`<label class="btn wide" style="display:block;text-align:center;line-height:37px;cursor:pointer">Open a .branch.json file`
+    +`<input type="file" id="importSavedFile" accept=".json" hidden></label>`;
+}
+function wireSaved(){
+  const f=$("importSavedFile");
+  if(f) f.onchange=e=>{ importSaved(e.target.files[0]); f.value=""; };
+}
+
 // ---------- DATA ----------
 function dataHTML(){ return `
   <h3>Add your data</h3>
@@ -735,11 +881,26 @@ function wireData(){
   d.ondragleave=()=>d.style.borderColor="var(--line2)";
   d.ondrop=e=>{e.preventDefault();d.style.borderColor="var(--line2)";readFile(e.dataTransfer.files[0]);};
 }
-function readFile(f){ if(!f)return; const r=new FileReader(); r.onload=()=>{ try{
-  let gj; if(f.name.toLowerCase().endsWith(".csv")) gj=csvToGeo(r.result); else gj=JSON.parse(r.result);
-  if(gj.type==="Feature") gj={type:"FeatureCollection",features:[gj]};
-  addLayer(f.name,gj); showTab("layers");
-}catch(e){ alert("Could not read "+f.name+": "+e.message); } }; r.readAsText(f); }
+function readFile(f){
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      let gj; if(f.name.toLowerCase().endsWith(".csv")) gj=csvToGeo(r.result); else gj=JSON.parse(r.result);
+      if(gj.type==="Feature") gj={type:"FeatureCollection",features:[gj]};
+      if(!gj.features||!gj.features.length) throw new Error("there are no features in it");
+      addLayer(f.name,gj);
+      noteUpload(f.name,gj.features.length);
+      showTab("layers");
+    }catch(e){
+      showTab("ask");
+      pushMsg("err",`Could not read <b>${esc(f.name)}</b>: ${esc(e.message)}. `
+        +`branch reads GeoJSON, or CSV with latitude and longitude columns.`,"err");
+    }
+  };
+  r.onerror=()=>{ showTab("ask"); pushMsg("err",`Could not open ${esc(f.name)}.`,"err"); };
+  r.readAsText(f);
+}
 function csvToGeo(txt){
   const lines=txt.trim().split(/\r?\n/), head=lines[0].split(",").map(s=>s.trim().toLowerCase());
   const la=head.findIndex(h=>["lat","latitude","y"].includes(h)), lo=head.findIndex(h=>["lon","lng","long","longitude","x"].includes(h));
