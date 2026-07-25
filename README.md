@@ -34,6 +34,11 @@ measuring (its own UTM zone, so a length is a length anywhere on earth),
 validates geometry, and returns its result together with a small recipe (the
 tool plus the exact parameters it ran), so any answer can be reproduced.
 
+A file that arrives in the wrong coordinate system is not drawn as if it were
+right. Coordinates in the hundreds of thousands are recognised as a projected
+grid, branch asks which one and suggests the systems actually used where you are
+looking, and it checks the converted result lands there before accepting it.
+
 Where a dataset does not reach, branch refuses instead of guessing. The street
 tree census is a New York dataset, so asking for shade routing outside New York
 returns an error naming the source and its extent, rather than an empty result

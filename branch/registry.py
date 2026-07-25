@@ -205,6 +205,144 @@ register(Tool(
     run=_run_clip))
 
 
+def _coord_sample(fc: dict, limit: int = 200) -> list[tuple[float, float]]:
+    """A few raw coordinates, without assuming they mean anything yet."""
+    out = []
+    def walk(c):
+        if len(out) >= limit:
+            return
+        if (isinstance(c, (list, tuple)) and len(c) >= 2
+                and all(isinstance(v, (int, float)) for v in c[:2])):
+            out.append((float(c[0]), float(c[1])))
+            return
+        if isinstance(c, (list, tuple)):
+            for part in c:
+                walk(part)
+    for f in (fc.get("features") or [])[:limit]:
+        walk(((f or {}).get("geometry") or {}).get("coordinates"))
+    return out
+
+
+def looks_projected(fc: dict) -> dict:
+    """Do these coordinates look like degrees, or like a projected grid?
+
+    GeoJSON is defined as longitude and latitude, but exports from desktop GIS
+    routinely carry State Plane feet or UTM meters anyway. Numbers in the
+    hundreds of thousands are the giveaway, and catching it here is the
+    difference between a clear question and a map of an empty ocean.
+    """
+    pts = _coord_sample(fc)
+    if not pts:
+        return {"projected": False}
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    bad = any(abs(x) > 180 for x in xs) or any(abs(y) > 90 for y in ys)
+    return {"projected": bad,
+            "x_range": (min(xs), max(xs)), "y_range": (min(ys), max(ys))}
+
+
+def crs_candidates(near: list | None, limit: int = 8) -> list[dict]:
+    """Projected coordinate systems in use where the user is looking."""
+    if not near or len(near) != 4:
+        return []
+    try:
+        from pyproj.aoi import AreaOfInterest
+        from pyproj.database import query_crs_info
+        w, s_, e, n = near
+        rows = query_crs_info(auth_name="EPSG", pj_types=["PROJECTED_CRS"],
+                              area_of_interest=AreaOfInterest(w, s_, e, n),
+                              contains=False)
+    except Exception:
+        return []
+    seen, out = set(), []
+    for c in rows:
+        name = c.name
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append({"code": f"EPSG:{c.code}", "name": name})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _run_reproject(params: dict) -> dict:
+    """Move a layer from the coordinate system it was drawn in into lon/lat.
+
+    Needed whenever a file arrives from desktop GIS in State Plane or UTM. The
+    result is checked: if the numbers still do not look like degrees, the chosen
+    system was wrong and saying so beats drawing it in the wrong hemisphere.
+    """
+    layer = params["layer"]
+    from_crs = str(params.get("from_crs") or "").strip()
+    if not from_crs:
+        cands = crs_candidates(params.get("near"))
+        hint = ("Likely systems where you are looking: "
+                + "; ".join(f"{c['code']} ({c['name']})" for c in cands)
+                if cands else
+                "Open the file's .prj or metadata to find its EPSG code.")
+        raise ValueError("Tell me which coordinate system this layer is already "
+                         "in, as an EPSG code. " + hint)
+
+    gdf = gpd.GeoDataFrame.from_features(layer.get("features", []))
+    if gdf.empty:
+        raise ValueError("input layer has no features")
+    try:
+        gdf = gdf.set_crs(from_crs, allow_override=True)
+        moved = gdf.to_crs(config.WGS84)
+    except Exception as exc:
+        raise ValueError(f"{from_crs!r} is not a coordinate system pyproj "
+                         f"recognises ({exc}).") from None
+
+    check = looks_projected(json.loads(moved.to_json()))
+    if check.get("projected"):
+        raise ValueError(
+            f"Reprojecting from {from_crs} did not produce longitude and "
+            f"latitude (it gave x {check['x_range'][0]:.0f} to "
+            f"{check['x_range'][1]:.0f}), so that is not the right system for "
+            f"this file.")
+
+    # A wrong EPSG often yields coordinates that are perfectly valid and
+    # completely elsewhere: read as Web Mercator, a New York file lands in the
+    # Gulf of Guinea. Range alone cannot catch that, but if the caller said
+    # where the data belongs, distance can.
+    near = params.get("near")
+    if near and len(near) == 4:
+        w, s_, e, n = near
+        minx, miny, maxx, maxy = moved.total_bounds
+        cx, cy = (minx + maxx) / 2.0, (miny + maxy) / 2.0
+        pad = max(abs(e - w), abs(n - s_), 0.5) * 5.0
+        if not (w - pad <= cx <= e + pad and s_ - pad <= cy <= n + pad):
+            raise ValueError(
+                f"Read as {from_crs}, this layer lands at {cy:.3f}, {cx:.3f}, "
+                f"which is nowhere near where you are looking "
+                f"({(s_ + n) / 2:.3f}, {(w + e) / 2:.3f}). That is the signature "
+                f"of the wrong EPSG code, so branch will not place it there.")
+    return {"result": _fc(moved),
+            "recipe": {"tool": "reproject", "from_crs": from_crs,
+                       "to_crs": config.WGS84, "features": int(len(moved))}}
+
+
+register(Tool(
+    id="reproject", title="Fix a layer's coordinate system", noun="Reprojected",
+    category="shaping layers", returns="layer",
+    description="Convert a layer that was drawn in a projected coordinate system "
+                "(State Plane feet, UTM meters, a local grid) into longitude and "
+                "latitude so it lands in the right place. Use it when a file from "
+                "ArcGIS or QGIS appears in the wrong part of the world, or is "
+                "rejected for having coordinates in the hundreds of thousands. "
+                "Give the EPSG code the file is already in.",
+    params={"type": "object", "required": ["layer"], "properties": {
+        "layer": {"type": "object", "description": "the layer to convert"},
+        "from_crs": {"type": "string",
+                     "description": "EPSG code the data is currently in, e.g. EPSG:2263"},
+        "near": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                 "maxItems": 4,
+                 "description": "optional [west, south, east, north] of where the "
+                                "data belongs, used to suggest likely systems"}}},
+    run=_run_reproject))
+
+
 def _run_boundary(params: dict) -> dict:
     """Find a real jurisdiction and return its border as a polygon.
 

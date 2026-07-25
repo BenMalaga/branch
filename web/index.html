@@ -962,6 +962,45 @@ function wireData(){
   d.ondragleave=()=>d.style.borderColor="var(--line2)";
   d.ondrop=e=>{e.preventDefault();d.style.borderColor="var(--line2)";readFile(e.dataTransfer.files[0]);};
 }
+// GeoJSON is defined as longitude and latitude, but exports from desktop GIS
+// routinely carry State Plane feet or UTM meters anyway. Catching that here is
+// the difference between a clear question and a map of an empty ocean.
+function sampleCoords(gj,limit=200){
+  const out=[];
+  const walk=c=>{
+    if(out.length>=limit) return;
+    if(Array.isArray(c)&&c.length>=2&&typeof c[0]==="number"&&typeof c[1]==="number"){ out.push(c); return; }
+    if(Array.isArray(c)) c.forEach(walk);
+  };
+  (gj.features||[]).slice(0,limit).forEach(f=>walk((f.geometry||{}).coordinates));
+  return out;
+}
+function crsTrouble(gj){
+  const pts=sampleCoords(gj);
+  if(!pts.length) return null;
+  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  if(xs.some(x=>Math.abs(x)>180)||ys.some(y=>Math.abs(y)>90))
+    return {x:[Math.min(...xs),Math.max(...xs)], y:[Math.min(...ys),Math.max(...ys)]};
+  return null;
+}
+window.fixUpload=async(name,which)=>{
+  const pend=pendingUpload;
+  if(!pend) return;
+  const code=(document.getElementById("crsCode")||{}).value;
+  const b=map.getBounds();
+  const near=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];
+  setLoading(true,"Converting coordinates...");
+  try{
+    const res=await callTool("reproject",{layer:pend.gj,from_crs:code,near});
+    addLayer(pend.name,res,{src:{t:"reproject",p:{from_crs:code}}});
+    noteUpload(pend.name,(res.features||[]).length);
+    pendingUpload=null;
+    showTab("layers");
+  }catch(e){
+    pushMsg("err",esc(e.message||"Could not convert that file."),"err");
+  }finally{ setLoading(false); }
+};
+let pendingUpload=null;
 function readFile(f){
   if(!f) return;
   const r=new FileReader();
@@ -970,6 +1009,24 @@ function readFile(f){
       let gj; if(f.name.toLowerCase().endsWith(".csv")) gj=csvToGeo(r.result); else gj=JSON.parse(r.result);
       if(gj.type==="Feature") gj={type:"FeatureCollection",features:[gj]};
       if(!gj.features||!gj.features.length) throw new Error("there are no features in it");
+      const bad=crsTrouble(gj);
+      if(bad){
+        // Do not draw it. Ask which system it is in, and offer the fix.
+        pendingUpload={name:f.name,gj};
+        showTab("ask");
+        pushMsg("err",`<b>${esc(f.name)}</b> is not in longitude and latitude. `
+          +`Its coordinates run from ${Math.round(bad.x[0]).toLocaleString()} to `
+          +`${Math.round(bad.x[1]).toLocaleString()} across and `
+          +`${Math.round(bad.y[0]).toLocaleString()} to ${Math.round(bad.y[1]).toLocaleString()} up, `
+          +`which is a projected grid such as State Plane feet or UTM meters. `
+          +`Drawing it as it stands would put it in the wrong part of the world.`
+          +`<div class="row" style="margin-top:10px">`
+          +`<input class="field" id="crsCode" placeholder="EPSG code, e.g. EPSG:2263" style="flex:1">`
+          +`<button class="btn pri" onclick="fixUpload()">Convert</button></div>`
+          +`<div class="sub" style="margin:8px 0 0">It is in the file's .prj or metadata. `
+          +`branch checks the result lands where you are looking before accepting it.</div>`,"err");
+        return;
+      }
       addLayer(f.name,gj);
       noteUpload(f.name,gj.features.length);
       showTab("layers");
