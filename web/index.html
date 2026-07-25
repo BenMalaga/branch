@@ -310,13 +310,23 @@ function init(){
 }
 
 // ---------- layers ----------
+// MapLibre throws "Style is not done loading" if you touch layers while a style
+// is still settling, which silently lost results on slower connections. Anything
+// that mutates the map goes through here.
+function onStyleReady(fn){
+  try{ if(map&&map.isStyleLoaded&&map.isStyleLoaded()){ fn(); return; } }catch(e){}
+  map.once("idle",()=>{ try{ fn(); }catch(e){} });
+}
 function addLayer(name,geojson,opts={}){
   const id="ly"+Date.now()+Math.floor(Math.random()*1e4);
   const color=opts.color||PALETTE[colorI++%PALETTE.length];
   const L={id,name,geojson,color,visible:true,opacity:1,seq:++layerSeq,src:opts.src||null};
-  layers.unshift(L); drawLayer(L); applyOrder();
-  if(opts.fit!==false) fitTo(geojson);
-  if(getTab()==="layers") showTab("layers");
+  layers.unshift(L);
+  onStyleReady(()=>{
+    drawLayer(L); applyOrder();
+    if(opts.fit!==false) fitTo(geojson);
+    if(getTab()==="layers") showTab("layers");
+  });
   return L;
 }
 // choropleth: color features by a numeric value where one exists
@@ -353,9 +363,11 @@ function applyOpacity(L){
 }
 // layers[0] is the newest and draws on top; the panel reads the same way.
 function applyOrder(){
-  for(let i=layers.length-1;i>=0;i--)
-    ["-fill","-line","-pt"].forEach(sx=>{ if(map.getLayer(layers[i].id+sx)) map.moveLayer(layers[i].id+sx); });
-  ["drawprev-line","drawprev-pt"].forEach(id=>{ if(map.getLayer(id)) map.moveLayer(id); });
+  try{
+    for(let i=layers.length-1;i>=0;i--)
+      ["-fill","-line","-pt"].forEach(sx=>{ if(map.getLayer(layers[i].id+sx)) map.moveLayer(layers[i].id+sx); });
+    ["tblsel-line","tblsel-pt","drawprev-line","drawprev-pt"].forEach(id=>{ if(map.getLayer(id)) map.moveLayer(id); });
+  }catch(e){}   // a style swap mid-reorder is not worth failing the whole action for
 }
 window.moveLayer=(i,dir)=>{
   const j=i+dir;
