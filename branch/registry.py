@@ -205,6 +205,128 @@ register(Tool(
     run=_run_clip))
 
 
+def _run_boundary(params: dict) -> dict:
+    """Find a real jurisdiction and return its border as a polygon.
+
+    This is what lets someone say "the Bronx" and then scope every other tool to
+    it. Borders come from OpenStreetMap via Nominatim, which is key-free and
+    worldwide, so it works for a county, a borough, a town, or a neighborhood.
+    """
+    import requests
+    name = str(params["name"]).strip()
+    kind_wanted = (params.get("kind") or "").strip().lower()
+    ua = {"User-Agent": "branch (open-source city planning; planwithbranch.com)"}
+    AREA_KINDS = {"county", "city", "town", "village", "borough", "suburb",
+                  "state", "municipality", "district", "city_district",
+                  "neighbourhood", "quarter", "region", "province", "hamlet"}
+    r = requests.get("https://nominatim.openstreetmap.org/search",
+                     params={"q": name, "format": "json", "limit": 8},
+                     headers=ua, timeout=25)
+    r.raise_for_status()
+    rows = [x for x in r.json()
+            if x.get("osm_type") in ("relation", "way")
+            and (x.get("addresstype") or x.get("type")) in AREA_KINDS]
+    if kind_wanted:
+        rows = [x for x in rows
+                if (x.get("addresstype") or x.get("type")) == kind_wanted] or rows
+    if not rows:
+        raise ValueError(f"No mapped jurisdiction called {name!r} was found. "
+                         f"Try a fuller name, such as 'Bronx County, New York'.")
+    pick = rows[0]
+    prefix = {"relation": "R", "way": "W"}[pick["osm_type"]]
+    r2 = requests.get("https://nominatim.openstreetmap.org/lookup",
+                      params={"osm_ids": f"{prefix}{pick['osm_id']}",
+                              "format": "json", "polygon_geojson": 1},
+                      headers=ua, timeout=30)
+    r2.raise_for_status()
+    got = r2.json()
+    geom = (got[0].get("geojson") if got else None)
+    if not geom or geom.get("type") not in ("Polygon", "MultiPolygon"):
+        raise ValueError(f"{name!r} exists but has no mapped border in "
+                         f"OpenStreetMap, so there is nothing to plan inside.")
+    label = (got[0].get("display_name") or name).split(",")[0]
+    kind = got[0].get("addresstype") or got[0].get("type") or "area"
+    return {"result": {"type": "FeatureCollection", "features": [{
+                "type": "Feature",
+                "properties": {"name": label, "kind": kind,
+                               "full_name": got[0].get("display_name"),
+                               "source": "OpenStreetMap via Nominatim"},
+                "geometry": geom}]},
+            "recipe": {"tool": "boundary", "name": label, "kind": kind,
+                       "osm_type": pick["osm_type"], "osm_id": int(pick["osm_id"])}}
+
+
+register(Tool(
+    id="boundary", title="Find a place's border", noun="Boundary",
+    category="map data", returns="layer",
+    description="Look up the real border of a county, city, town, borough, "
+                "district or neighborhood and put it on the map as an area. Use "
+                "it to scope work to one jurisdiction, for example 'the Bronx' "
+                "or 'Boulder, Colorado', then clip other layers to it. Borders "
+                "come from OpenStreetMap and cover the whole world.",
+    params={"type": "object", "required": ["name"], "properties": {
+        "name": {"type": "string",
+                 "description": "the place, e.g. 'Bronx County, New York'"},
+        "kind": {"type": "string",
+                 "description": "optional preferred kind: county, city, town, "
+                                "borough, neighbourhood"}}},
+    run=_run_boundary))
+
+
+def _run_filter(params: dict) -> dict:
+    """Keep only the features whose attribute passes a test."""
+    gdf = _read_fc(params["layer"])
+    field, op = params["field"], params.get("op", "equals")
+    value = params.get("value")
+    if field not in gdf.columns:
+        have = ", ".join([c for c in gdf.columns if c != "geometry"][:12]) or "none"
+        raise ValueError(f"This layer has no field called {field!r}. "
+                         f"Fields it does have: {have}.")
+    col = gdf[field]
+    if op in ("greater_than", "less_than", "at_least", "at_most"):
+        nums = gpd.pd.to_numeric(col, errors="coerce")
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{op} needs a number, but got {value!r}.")
+        mask = {"greater_than": nums > v, "less_than": nums < v,
+                "at_least": nums >= v, "at_most": nums <= v}[op]
+    elif op == "contains":
+        mask = col.astype(str).str.contains(str(value), case=False, na=False)
+    elif op == "not_equals":
+        mask = col.astype(str) != str(value)
+    elif op == "is_present":
+        mask = col.notna() & (col.astype(str) != "")
+    else:
+        mask = col.astype(str) == str(value)
+    kept = gdf[mask.fillna(False)]
+    if kept.empty:
+        raise ValueError(f"No features matched {field} {op.replace('_',' ')} "
+                         f"{value!r}, so there is nothing to draw.")
+    return {"result": _fc(kept),
+            "recipe": {"tool": "filter", "field": field, "op": op,
+                       "value": value, "kept": int(len(kept)),
+                       "of": int(len(gdf))}}
+
+
+register(Tool(
+    id="filter", title="Keep only what matches", noun="Filtered",
+    category="shaping layers", returns="layer",
+    description="Keep only the features in a layer whose attribute passes a "
+                "test, for example only schools, only parcels worth more than a "
+                "number, or only roads whose name contains something. Say which "
+                "field to test and how. Also called a filter, or a definition query.",
+    params={"type": "object", "required": ["layer", "field"], "properties": {
+        "layer": {"type": "object", "description": "the layer to filter"},
+        "field": {"type": "string", "description": "the attribute to test"},
+        "op": {"type": "string",
+               "enum": ["equals", "not_equals", "contains", "greater_than",
+                        "less_than", "at_least", "at_most", "is_present"],
+               "default": "equals"},
+        "value": {"type": "string", "description": "what to compare against"}}},
+    run=_run_filter))
+
+
 # --- connectors (free public data) -------------------------------------------
 def _run_osm(params: dict) -> dict:
     import osmnx as ox

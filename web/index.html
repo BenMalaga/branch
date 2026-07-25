@@ -176,7 +176,11 @@
   #draw button{padding:7px 11px;font-size:11.5px;color:var(--muted);background:none;border:none;border-radius:8px}
   #draw button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
   #ac{position:absolute;z-index:8;background:var(--panel);border:1px solid var(--line2);border-radius:11px;overflow:hidden;box-shadow:0 14px 34px rgba(0,0,0,.5)}
-  .aci{padding:10px 13px;font-size:12px;border-top:1px solid var(--line);line-height:1.4;cursor:pointer}
+  .aci{display:flex;align-items:center;gap:8px;padding:9px 13px;font-size:12px;border-top:1px solid var(--line);line-height:1.4;cursor:pointer}
+  .aci .acl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .aci .ack{flex:none;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);white-space:nowrap}
+  .aci .acb{flex:none;padding:3px 8px;font-size:10.5px;color:var(--accent-ink);background:var(--accent);border:none;border-radius:6px;font-weight:600;white-space:nowrap;cursor:pointer}
+  .aci .acb:hover{background:var(--accent-2)}
   .aci:first-child{border-top:none}
   .aci:hover{background:var(--surface)}
   .maplibregl-popup-content{background:var(--panel);color:var(--ink);border:1px solid var(--line2);
@@ -1154,13 +1158,52 @@ function wireBasemaps(){
 }
 function wireSearch(){ const q=$("q"); let tmr;
   q.oninput=()=>{ clearTimeout(tmr); const v=q.value.trim(); if(v.length<3){$("ac").hidden=true;return;} tmr=setTimeout(async()=>{
-    try{ const rows=await(await fetch("/api/geocode?q="+encodeURIComponent(v))).json(); const ac=$("ac"); const r=$("search").getBoundingClientRect();
+    try{
+      const b=map.getBounds();
+      const vb=[b.getWest(),b.getNorth(),b.getEast(),b.getSouth()].join(",");
+      const rows=await(await fetch(`/api/geocode?q=${encodeURIComponent(v)}&viewbox=${vb}`)).json();
+      const ac=$("ac"); const r=$("search").getBoundingClientRect();
       ac.style.left=r.left+"px"; ac.style.top=(r.bottom+4)+"px"; ac.style.width=r.width+"px";
-      ac.innerHTML=(Array.isArray(rows)?rows:[]).map((x,i)=>`<div class="aci" data-i="${i}">${esc(x.label.split(", ").slice(0,3).join(", "))}</div>`).join("")||`<div class="aci">No matches</div>`;
+      // A county or a borough is somewhere you work, not just a pin to fly to.
+      ac.innerHTML=(Array.isArray(rows)?rows:[]).map((x,i)=>
+        `<div class="aci" data-i="${i}">`
+        +`<span class="acl">${esc(x.label.split(", ").slice(0,3).join(", "))}</span>`
+        +(x.kind?`<span class="ack">${esc(String(x.kind).replace(/_/g," "))}</span>`:"")
+        +(x.is_area?`<button class="acb" data-area="${i}" title="Add this border as an area you can plan inside">Use as area</button>`:"")
+        +`</div>`).join("")||`<div class="aci">No matches</div>`;
       ac.hidden=false; window._geo=rows;
-      ac.querySelectorAll(".aci").forEach(el=>el.onmousedown=ev=>{ ev.preventDefault(); const x=window._geo[+el.dataset.i]; if(x){map.flyTo({center:[x.lon,x.lat],zoom:15}); new maplibregl.Marker({color:"#8ed3a6"}).setLngLat([x.lon,x.lat]).addTo(map);} ac.hidden=true; q.value=""; });
+      ac.querySelectorAll(".aci").forEach(el=>el.onmousedown=ev=>{
+        if(ev.target.classList.contains("acb")) return;      // the button has its own job
+        ev.preventDefault(); const x=window._geo[+el.dataset.i];
+        if(x){ map.flyTo({center:[x.lon,x.lat],zoom:15});
+               new maplibregl.Marker({color:"#8ed3a6"}).setLngLat([x.lon,x.lat]).addTo(map); }
+        ac.hidden=true; q.value="";
+      });
+      ac.querySelectorAll(".acb").forEach(btn=>btn.onmousedown=async ev=>{
+        ev.preventDefault(); ev.stopPropagation();
+        const x=window._geo[+btn.dataset.area]; if(!x) return;
+        ac.hidden=true; q.value="";
+        await addBoundaryLayer(x);
+      });
     }catch(e){} },350); };
   q.onblur=()=>setTimeout(()=>$("ac").hidden=true,200);
+}
+// Turning a search result into a study area: the border becomes a layer, the map
+// frames it, and the breakdown of what is inside runs straight away.
+async function addBoundaryLayer(x){
+  setLoading(true,`Fetching the border of ${x.label.split(",")[0]}...`);
+  try{
+    const r=await fetch(`/api/boundary?osm_type=${encodeURIComponent(x.osm_type)}&osm_id=${encodeURIComponent(x.osm_id)}`);
+    const d=await r.json();
+    if(d.error) throw new Error(d.error);
+    const f=d.result.features[0], name=f.properties.name||x.label.split(",")[0];
+    addLayer(`${name} (${f.properties.kind})`,d.result,{fit:true,src:{t:"boundary",p:{name}}});
+    buildAreaReport(f.geometry);
+  }catch(e){
+    showTab("ask");
+    const th=$("thread");
+    if(th) th.insertAdjacentHTML("beforeend",`<div class="msg err">Could not load that border: ${esc(e.message||"request failed")}</div>`);
+  }finally{ setLoading(false); }
 }
 function wireSettings(){ $("setBtn").onclick=()=>{ const s=llmConfig(); $("prov").value=s.provider||"anthropic"; $("model").value=s.model||""; $("key").value=s.key||""; $("prov").onchange(); settings.showModal(); };
   $("prov").onchange=()=>{ const ol=$("prov").value==="ollama"; $("keyLb").style.opacity=ol?.4:1; $("key").disabled=ol; $("model").placeholder=ol?"llama3.1":($("prov").value==="openai"?"gpt-4o-mini":"claude-sonnet-4-5"); }; }

@@ -36,24 +36,84 @@ def index():
     return send_from_directory(WEB_DIR, "index.html")
 
 
+# A jurisdiction is a place you can work in, so these are the result kinds that
+# get offered as a study-area boundary rather than just a pin.
+AREA_KINDS = {"county", "city", "town", "village", "borough", "suburb", "state",
+              "municipality", "district", "city_district", "neighbourhood",
+              "quarter", "region", "province", "hamlet", "administrative"}
+
+
 @app.get("/api/geocode")
 def geocode():
-    """Address search via Nominatim (no key). Returns up to 6 NYC-area matches."""
+    """Place search via Nominatim (no key), anywhere on earth.
+
+    The current map view only biases the ranking, it does not restrict it: this
+    used to be pinned to a New York viewbox, which quietly made every search
+    outside New York useless.
+    """
     q = request.args.get("q", "").strip()
     if len(q) < 3:
         return jsonify([])
+    params = {"q": q, "format": "json", "limit": 8, "addressdetails": 0}
+    view = request.args.get("viewbox", "").strip()
+    if view:
+        params["viewbox"] = view          # bias toward what the user is looking at
     try:
-        r = requests.get(NOMINATIM, params={
-            "q": q, "format": "json", "limit": 6,
-            "viewbox": NYC_VIEWBOX, "bounded": 1,
-        }, headers={"User-Agent": NOMINATIM_UA}, timeout=15)
+        r = requests.get(NOMINATIM, params=params,
+                         headers={"User-Agent": NOMINATIM_UA}, timeout=15)
         r.raise_for_status()
         rows = r.json()
     except Exception as e:
         return jsonify({"error": str(e)}), 502
-    return jsonify([{"label": x["display_name"],
-                     "lat": float(x["lat"]), "lon": float(x["lon"])}
-                    for x in rows])
+    out = []
+    for x in rows:
+        kind = x.get("addresstype") or x.get("type") or ""
+        out.append({"label": x["display_name"],
+                    "lat": float(x["lat"]), "lon": float(x["lon"]),
+                    "kind": kind,
+                    "osm_type": x.get("osm_type"), "osm_id": x.get("osm_id"),
+                    "is_area": bool(kind in AREA_KINDS
+                                    and x.get("osm_type") in ("relation", "way"))})
+    return jsonify(out)
+
+
+@app.get("/api/boundary")
+def boundary():
+    """The real border of one place, as a polygon you can plan inside.
+
+    Two steps on purpose: search stays light while typing, and the boundary
+    (which can be thousands of points) is fetched only for the one you pick.
+    """
+    osm_type = request.args.get("osm_type", "")
+    osm_id = request.args.get("osm_id", "")
+    if osm_type not in ("relation", "way") or not str(osm_id).isdigit():
+        return jsonify({"error": "need an osm_type of relation or way, plus a numeric osm_id"}), 400
+    prefix = {"relation": "R", "way": "W"}[osm_type]
+    try:
+        r = requests.get(NOMINATIM.replace("/search", "/lookup"), params={
+            "osm_ids": f"{prefix}{osm_id}", "format": "json", "polygon_geojson": 1,
+        }, headers={"User-Agent": NOMINATIM_UA}, timeout=25)
+        r.raise_for_status()
+        rows = r.json()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+    if not rows:
+        return jsonify({"error": "no such place"}), 404
+    row = rows[0]
+    geom = row.get("geojson")
+    if not geom or geom.get("type") not in ("Polygon", "MultiPolygon"):
+        return jsonify({"error": "that place has no mapped border in OpenStreetMap, "
+                                 "so there is nothing to plan inside"}), 404
+    name = (row.get("display_name") or "").split(",")[0]
+    kind = row.get("addresstype") or row.get("type") or "area"
+    return jsonify({"result": {"type": "FeatureCollection", "features": [{
+        "type": "Feature",
+        "properties": {"name": name, "kind": kind,
+                       "full_name": row.get("display_name"),
+                       "source": "OpenStreetMap via Nominatim"},
+        "geometry": geom}]},
+        "recipe": {"tool": "boundary", "osm_type": osm_type, "osm_id": int(osm_id),
+                   "name": name, "kind": kind}}) 
 
 
 @app.post("/api/prepare")
