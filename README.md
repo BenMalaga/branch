@@ -62,6 +62,11 @@ branch serve
 That serves the same app at `http://localhost:8000`. A `Dockerfile` and a
 `render.yaml` are included if you would rather deploy it somewhere.
 
+Every figure in an assistant answer is traced back to the tool run that produced
+it, by plain arithmetic rather than a second model. Anything that matches no tool
+output is flagged in the answer itself, so a number nobody computed cannot pass
+quietly. The check needs no API key, so it holds for a small local model too.
+
 ## The assistant is optional
 
 The "Ask the map" bar calls the same tools listed above. Bring your own model

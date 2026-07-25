@@ -16,7 +16,7 @@ import json
 
 import requests
 
-from . import registry
+from . import receipts, registry
 
 SYSTEM = (
     "You are branch, a city-planning assistant. You answer spatial questions by "
@@ -77,7 +77,10 @@ def run_agent(question: str, llm: dict, context: dict | None = None,
         reply = _chat(provider, messages, tools, llm)
         calls = reply.get("tool_calls") or []
         if not calls:
-            return {"answer": reply.get("text", ""), "steps": steps, "layers": layers}
+            answer = reply.get("text", "")
+            slim = [{k: v for k, v in st.items() if k != "result"} for st in steps]
+            return {"answer": answer, "steps": slim, "layers": layers,
+                    "receipts": receipts.verify(answer, steps, question)}
 
         messages.append({"role": "assistant", "content": reply["raw_assistant"]})
         results = []
@@ -91,8 +94,15 @@ def run_agent(question: str, llm: dict, context: dict | None = None,
                     out = tool.run(call["input"])
                     if tool.returns == "layer" and isinstance(out.get("result"), dict):
                         layers.append({"tool": tool.id, "geojson": out["result"]})
+                    res = out.get("result")
+                    n_feats = (len(res.get("features", []))
+                               if isinstance(res, dict) and isinstance(res.get("features"), list)
+                               else None)
                     steps.append({"tool": tool.id, "params": call["input"],
-                                  "recipe": out.get("recipe")})
+                                  "recipe": out.get("recipe"),
+                                  "feature_count": n_feats,
+                                  "result": res if not isinstance(res, dict)
+                                            or "features" not in res else None})
                 except Exception as e:  # tools own correctness; surface failures honestly
                     out = {"error": f"{type(e).__name__}: {e}"}
                     steps.append({"tool": tool.id, "params": call["input"], "error": str(e)})

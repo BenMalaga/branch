@@ -92,6 +92,14 @@
   #thread:empty{display:none}
   #thread.drop{outline:2px dashed var(--accent);outline-offset:3px}
   .msg{font-size:13px;line-height:1.55;margin:10px 0;padding:11px 13px;border-radius:12px}
+  .receipt{margin-top:9px;padding:8px 10px;border-radius:9px;font-size:11.5px;line-height:1.5}
+  .receipt.ok{background:rgba(142,211,166,.1);border:1px solid rgba(142,211,166,.28);color:var(--muted)}
+  .receipt.warn{background:rgba(230,192,123,.1);border:1px solid rgba(230,192,123,.32);color:var(--amber)}
+  .receipt .rsub{color:var(--muted);margin:3px 0 5px}
+  .orphan{margin-top:4px;padding-left:8px;border-left:2px solid rgba(230,192,123,.45)}
+  .orphan b{color:var(--amber);display:inline-block;margin-right:6px}
+  .orphan span{color:var(--muted);font-style:italic}
+  .stepn{color:var(--accent);font-size:10.5px}
   .steps{margin-top:8px}
   .steps summary{font-size:11px;color:var(--faint);cursor:pointer}
   .steps summary:hover{color:var(--muted)}
@@ -599,8 +607,20 @@ function stepsHTML(steps){
   if(!steps||!steps.length) return "";
   return `<details class="steps"><summary>${steps.length} step${steps.length===1?"":"s"} run</summary>`
     +steps.map((st,i)=>`<div class="stepline"><b>${i+1}. ${esc(st.tool)}</b>`
+      +(st.feature_count!=null?`<span class="stepn">${st.feature_count} features</span>`:"")
       +`<span>${esc(JSON.stringify(st.recipe||st.params||{}).slice(0,150))}</span></div>`).join("")
     +`</details>`;
+}
+// Every figure in the answer is checked against what the tools actually returned.
+// The check is plain arithmetic, so it holds even for a weak local model, and it
+// cannot itself invent anything.
+function receiptsHTML(r){
+  if(!r||!r.checked) return "";
+  if(r.clean) return `<div class="receipt ok">All ${r.traced} figure${r.traced===1?"":"s"} in this answer trace back to a tool run.</div>`;
+  return `<div class="receipt warn"><b>${r.traced} of ${r.checked} figures traced.</b>`
+    +`<div class="rsub">These did not come from any tool that ran, so check them before using them:</div>`
+    +r.orphans.map(o=>`<div class="orphan"><b>${esc(o.value)}</b><span>${esc(o.phrase)}</span></div>`).join("")
+    +`</div>`;
 }
 async function ask(){
   const q=$("q2").value.trim(); if(!q)return;
@@ -625,7 +645,7 @@ async function ask(){
         addLayer((t&&t.noun)||ly.tool||("result "+i),ly.geojson,{fit:i===0,src:{t:ly.tool,p:{}}});
       });
       const answer=d.answer||"Done.";
-      pushMsg("branch",esc(answer)+stepsHTML(d.steps));
+      pushMsg("branch",esc(answer)+receiptsHTML(d.receipts)+stepsHTML(d.steps));
       chat.push({role:"assistant",content:answer});   // so the next turn has context
     }
   }catch(e){ pushMsg("err","Could not reach the server.","err"); }
