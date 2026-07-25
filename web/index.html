@@ -124,6 +124,11 @@
   .layer .dl svg{width:15px;height:15px}
   .layer .dl:hover{color:var(--accent)}
   .layer .x:hover{color:var(--ink)}
+  .lctl{display:flex;align-items:center;gap:6px;margin:6px 0 10px 22px}
+  .lctl input[type=range]{flex:1;min-width:60px;accent-color:var(--accent);height:16px}
+  .lctl button{padding:3px 8px;font-size:11px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:7px}
+  .lctl button:hover:not(:disabled){color:var(--ink);border-color:var(--line2)}
+  .lctl button:disabled{opacity:.35;cursor:not-allowed}
   .legend{margin:1px 0 11px 22px}
   .legend .lgtop{color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin-bottom:4px}
   .legend .lgbar{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--ramp-lo),var(--ramp-mid),var(--ramp-hi))}
@@ -249,7 +254,7 @@ const $=id=>document.getElementById(id);
 const PALETTE=["#8ed3a6","#6fa8e8","#e6c07b","#e88a6a","#b9a1f0","#7fd6d6","#e79ac0"];
 const BG="#0e1311";
 const ACCENT="#8ed3a6";
-let map, layers=[], colorI=0, tools=[], drawMode=null, drawPts=[], pickTarget=null, curBasemap="dark";
+let map, layers=[], layerSeq=0, colorI=0, tools=[], drawMode=null, drawPts=[], pickTarget=null, curBasemap="dark";
 
 const BASEMAPS={
   dark:{tiles:["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"],attr:"&copy; OpenStreetMap &copy; CARTO"},
@@ -282,8 +287,8 @@ function init(){
 function addLayer(name,geojson,opts={}){
   const id="ly"+Date.now()+Math.floor(Math.random()*1e4);
   const color=opts.color||PALETTE[colorI++%PALETTE.length];
-  const L={id,name,geojson,color,visible:true,src:opts.src||null};
-  layers.push(L); drawLayer(L);
+  const L={id,name,geojson,color,visible:true,opacity:1,seq:++layerSeq,src:opts.src||null};
+  layers.unshift(L); drawLayer(L); applyOrder();
   if(opts.fit!==false) fitTo(geojson);
   if(getTab()==="layers") showTab("layers");
   return L;
@@ -309,8 +314,36 @@ function drawLayer(L){
   map.addLayer({id:L.id+"-pt",source:L.id,type:"circle",filter:["==","$type","Point"],paint:{"circle-radius":field?6:5,"circle-color":col,"circle-stroke-width":1.2,"circle-stroke-color":BG}});
   ["-fill","-line","-pt"].forEach(s=>map.on("click",L.id+s,popup));
 }
-function restyleLayers(){ restoreOverlays(); layers.forEach(L=>{ drawLayer(L); setVis(L); }); addDrawPreviewLayers(); drawPreview();
+function restyleLayers(){ restoreOverlays(); layers.forEach(L=>{ drawLayer(L); setVis(L); applyOpacity(L); }); applyOrder(); addDrawPreviewLayers(); drawPreview();
   if(curBasemap==="history"&&waybackIdx!=null) applyRelease(waybackIdx); }
+// Opacity multiplies the layer's own base value, which differs for a choropleth
+// fill, so it dims rather than flattening the styling.
+function applyOpacity(L){
+  const o=L.opacity==null?1:L.opacity;
+  const fillBase=L.field?0.6:0.22;
+  if(map.getLayer(L.id+"-fill")) map.setPaintProperty(L.id+"-fill","fill-opacity",fillBase*o);
+  if(map.getLayer(L.id+"-line")) map.setPaintProperty(L.id+"-line","line-opacity",o);
+  if(map.getLayer(L.id+"-pt")) map.setPaintProperty(L.id+"-pt","circle-opacity",o);
+}
+// layers[0] is the newest and draws on top; the panel reads the same way.
+function applyOrder(){
+  for(let i=layers.length-1;i>=0;i--)
+    ["-fill","-line","-pt"].forEach(sx=>{ if(map.getLayer(layers[i].id+sx)) map.moveLayer(layers[i].id+sx); });
+  ["drawprev-line","drawprev-pt"].forEach(id=>{ if(map.getLayer(id)) map.moveLayer(id); });
+}
+window.moveLayer=(i,dir)=>{
+  const j=i+dir;
+  if(j<0||j>=layers.length) return;
+  [layers[i],layers[j]]=[layers[j],layers[i]];
+  applyOrder(); showTab("layers");
+};
+window.zoomToLayer=i=>{ const L=layers[i]; if(L) fitTo(L.geojson); };
+window.soloLayer=i=>{
+  const only=layers.filter((_,n)=>n!==i).every(l=>!l.visible);   // already solo: restore all
+  layers.forEach((l,n)=>{ l.visible=only?true:(n===i); setVis(l); });
+  showTab("layers");
+};
+window.setLayerOpacity=(i,v)=>{ const L=layers[i]; if(!L) return; L.opacity=+v/100; applyOpacity(L); };
 function setVis(L){ ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s)) map.setLayoutProperty(L.id+s,"visibility",L.visible?"visible":"none"); }); }
 function removeLayer(L){ ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s))map.removeLayer(L.id+s); }); if(map.getSource(L.id))map.removeSource(L.id); layers=layers.filter(x=>x!==L); showTab("layers"); }
 function popup(e){ const p=e.features[0].properties||{}; const rows=Object.entries(p).slice(0,12).map(([k,v])=>`${k}: ${v}`).join("\n"); new maplibregl.Popup().setLngLat(e.lngLat).setText(rows||"(no attributes)").addTo(map); }
@@ -354,10 +387,10 @@ window.runExample=async()=>{
     map.fitBounds([[bbox[0],bbox[1]],[bbox[2],bbox[3]]],{padding:60});
     const pts=await callTool("osm",{bbox,tags:{amenity:"restaurant"}});
     if(!pts||!(pts.features||[]).length) throw new Error("No features came back for the example area.");
-    addLayer("Restaurants (OpenStreetMap)",pts,{fit:false,src:{t:"osm",p:{bbox,tags:{amenity:"restaurant"}}}});
+    const ptsL=addLayer("Restaurants (OpenStreetMap)",pts,{fit:false,src:{t:"osm",p:{bbox,tags:{amenity:"restaurant"}}}});
     setLoading(true,"Aggregating to hexagons...");
     const hex=await callTool("density_hexbin",{layer:pts,resolution:9});
-    if(hex&&(hex.features||[]).length) addLayer("Restaurant density",hex,{fit:false,src:{t:"density_hexbin",p:{layer:{$:layers.length-1},resolution:9}}});
+    if(hex&&(hex.features||[]).length) addLayer("Restaurant density",hex,{fit:false,src:{t:"density_hexbin",p:{layer:{ref:ptsL.id},resolution:9}}});
     showTab("layers");
   }catch(e){
     setLoading(false);
@@ -457,7 +490,7 @@ async function runTool(t,dlg){
   const params={},srcp={};
   dlg.querySelectorAll("[data-k]").forEach(el=>{
     const k=el.dataset.k,kind=el.dataset.kind; let v,sv;
-    if(kind==="layer"){ if(el.value!==""){ v=layers[+el.value].geojson; sv={$:+el.value}; } }
+    if(kind==="layer"){ if(el.value!==""){ const src=layers[+el.value]; v=src.geojson; sv={ref:src.id}; } }
     else if(kind==="bbox"||kind==="point"){ if(el.dataset.val){ v=JSON.parse(el.dataset.val); sv=v; } }
     else{ v=el.value; if(el.type==="number"&&v!=="") v=+v; sv=v; }
     if(v!==undefined&&v!==""){ params[k]=v; srcp[k]=sv; }
@@ -487,7 +520,14 @@ function layersHTML(){
   if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
   return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
     +`<button class="btn wide" onclick="copyShareLink(this)" style="margin-bottom:14px">Copy a link that rebuilds this</button>`
-    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><span class="nm">${esc(l.name)}</span><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("")+auditHTML();
+    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><span class="nm">${esc(l.name)}</span><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
+    +`<div class="lctl">`
+      +`<input type="range" min="0" max="100" value="${Math.round((l.opacity==null?1:l.opacity)*100)}" oninput="setLayerOpacity(${i},this.value)" aria-label="Opacity of ${esc(l.name)}" title="Opacity">`
+      +`<button type="button" onclick="zoomToLayer(${i})" title="Zoom to this layer">Zoom</button>`
+      +`<button type="button" onclick="soloLayer(${i})" title="Show only this layer">Only</button>`
+      +`<button type="button" onclick="moveLayer(${i},-1)" ${i===0?"disabled":""} title="Move up" aria-label="Move ${esc(l.name)} up">&uarr;</button>`
+      +`<button type="button" onclick="moveLayer(${i},1)" ${i===layers.length-1?"disabled":""} title="Move down" aria-label="Move ${esc(l.name)} down">&darr;</button>`
+    +`</div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("")+auditHTML();
 }
 function wireLayers(){
   document.querySelectorAll(".lvis").forEach(c=>c.onchange=()=>{ const L=layers[+c.dataset.i]; L.visible=c.checked; setVis(L); });
@@ -771,15 +811,16 @@ function valueHTML(res,recipe){
 // whole analysis can be written out as something a colleague or a council can
 // read, check, and re-run. This is the claim the product is built on.
 function auditSteps(){
-  return layers.map((l,i)=>{
+  return [...layers].sort((a,b)=>a.seq-b.seq).map((l,i)=>{
     const n=((l.geojson||{}).features||[]).length, s=l.src;
     let how="added directly (uploaded or drawn by hand)";
     if(s&&s.d) how=`drawn ${String(s.d.type||"shape").toLowerCase()} on the map`;
     else if(s&&s.t){
       const parts=Object.entries(s.p||{}).map(([k,v])=>{
-        if(v&&typeof v==="object"&&v.$!==undefined){
-          const src=layers[v.$];
-          return `${k} = ${src?`step ${v.$+1} (${src.name})`:"a layer that was since removed"}`;
+        if(v&&typeof v==="object"&&v.ref!==undefined){
+          const ordered=[...layers].sort((a,b)=>a.seq-b.seq);
+          const at=ordered.findIndex(x=>x.id===v.ref);
+          return `${k} = ${at>=0?`step ${at+1} (${ordered[at].name})`:"a layer that was since removed"}`;
         }
         return `${k} = ${JSON.stringify(v)}`;
       });
@@ -838,20 +879,28 @@ window.downloadLayer=i=>{
 const b64=t=>{const b=new TextEncoder().encode(t);let s="";for(const c of b)s+=String.fromCharCode(c);return btoa(s).replace(/=+$/,"");};
 const unb64=t=>new TextDecoder().decode(Uint8Array.from(atob(t),c=>c.charCodeAt(0)));
 function shareState(){
+  // A layer must be emitted after everything it was built from. Panel order is
+  // just presentation and the user can shuffle it, so sort by dependency and use
+  // creation order only to break ties.
   const idx=new Map(), out=[];
-  layers.forEach((l,i)=>{
-    if(!l.src) return;                       // uploaded data has no recipe to replay
-    if(l.src.d){ idx.set(i,out.length); out.push({n:l.name,d:l.src.d}); return; }
-    const p={}; let ok=true;
-    for(const [k,v] of Object.entries(l.src.p||{})){
-      if(v&&typeof v==="object"&&v.$!==undefined){
-        if(!idx.has(v.$)){ ok=false; break; }  // its input cannot be rebuilt either
-        p[k]={$:idx.get(v.$)};
-      } else p[k]=v;
+  const pending=layers.filter(l=>l.src).sort((a,b)=>a.seq-b.seq);
+  const refsOf=l=>Object.values(l.src.p||{}).filter(v=>v&&typeof v==="object"&&v.ref!==undefined);
+  for(let moved=true; moved; ){
+    moved=false;
+    for(let i=0;i<pending.length;i++){
+      const l=pending[i];
+      if(l.src.d){
+        idx.set(l.id,out.length); out.push({n:l.name,d:l.src.d});
+        pending.splice(i--,1); moved=true; continue;
+      }
+      if(refsOf(l).some(v=>!idx.has(v.ref))) continue;   // input not emitted yet
+      const p={};
+      for(const [k,v] of Object.entries(l.src.p||{}))
+        p[k]=(v&&typeof v==="object"&&v.ref!==undefined)?{$:idx.get(v.ref)}:v;
+      idx.set(l.id,out.length); out.push({n:l.name,t:l.src.t,p});
+      pending.splice(i--,1); moved=true;
     }
-    if(!ok) return;
-    idx.set(i,out.length); out.push({n:l.name,t:l.src.t,p});
-  });
+  }   // whatever is left depends on an upload or a deleted layer, so it cannot travel
   const c=map.getCenter();
   return {st:{v:[+c.lat.toFixed(5),+c.lng.toFixed(5),+map.getZoom().toFixed(2),curBasemap],l:out},
           skipped:layers.length-out.length};
@@ -880,9 +929,14 @@ async function replayState(st){
   try{
     for(const it of items){
       if(it.d){ built.push(addLayer(it.n||"drawn",{type:"FeatureCollection",features:[{type:"Feature",properties:{drawn:true},geometry:it.d}]},{fit:false,src:{d:it.d}})); continue; }
-      const params={};
-      for(const [k,v] of Object.entries(it.p||{})) params[k]=(v&&typeof v==="object"&&v.$!==undefined)?(built[v.$]||{}).geojson:v;
-      built.push(addLayer(it.n||it.t,await callTool(it.t,params),{fit:false,src:{t:it.t,p:it.p}}));
+      const params={}, srcp={};
+      for(const [k,v] of Object.entries(it.p||{})){
+        if(v&&typeof v==="object"&&v.$!==undefined){
+          const parent=built[v.$];
+          params[k]=(parent||{}).geojson; srcp[k]={ref:(parent||{}).id};
+        } else { params[k]=v; srcp[k]=v; }
+      }
+      built.push(addLayer(it.n||it.t,await callTool(it.t,params),{fit:false,src:{t:it.t,p:srcp}}));
     }
     showTab("layers");
   }catch(e){
