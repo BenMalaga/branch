@@ -125,10 +125,24 @@ def _ollama(messages, tools, llm) -> dict:
     host = llm.get("host", "http://localhost:11434")
     ol_tools = [{"type": "function", "function": {
         "name": t["name"], "description": t["description"], "parameters": t["input_schema"]}} for t in tools]
-    r = requests.post(f"{host}/api/chat", timeout=120, json={
-        "model": llm.get("model", "llama3.1"), "stream": False,
-        "messages": [{"role": "system", "content": SYSTEM}] + messages, "tools": ol_tools})
-    r.raise_for_status()
+    try:
+        r = requests.post(f"{host}/api/chat", timeout=120, json={
+            "model": llm.get("model", "llama3.1"), "stream": False,
+            "messages": [{"role": "system", "content": SYSTEM}] + messages,
+            "tools": ol_tools})
+        r.raise_for_status()
+    except requests.exceptions.ConnectionError:
+        # Ollama runs next to the SERVER, not next to the visitor. On the hosted
+        # site that server has no model, so say so plainly instead of leaking a
+        # connection error about a port the user has never heard of.
+        raise RuntimeError(
+            "The Ollama option runs a model on the same machine as the branch "
+            "server, and this server does not have one, so there was nothing to "
+            "reach. Two things that do work right now: add your own Anthropic or "
+            "OpenAI key under AI settings (it stays in your browser and is never "
+            "stored), or run branch on your own computer, where it can reach your "
+            "Ollama. Every tool on the Tools tab also works without any AI at all."
+        ) from None
     msg = r.json().get("message", {})
     calls = [{"id": str(i), "name": c["function"]["name"],
               "input": c["function"].get("arguments", {})}

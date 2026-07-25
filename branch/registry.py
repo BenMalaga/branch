@@ -23,11 +23,11 @@ from . import config, data, pipeline, routing, geoutil
 class Tool:
     id: str
     title: str
-    description: str          # written for the LLM: what it does + when to use it
+    description: str          # plain English: read by the user AND the LLM
     params: dict             # JSON Schema of the inputs
     run: Callable            # (params: dict) -> {"result":..., "recipe":...}
     returns: str = "layer"   # layer | table | value
-    category: str = "geoprocessing"   # geoprocessing | connector | planning
+    category: str = "shaping layers"  # groups tools in the UI, in plain English
 
 
 _REGISTRY: dict[str, Tool] = {}
@@ -141,9 +141,10 @@ def _run_buffer(params: dict) -> dict:
 
 
 register(Tool(
-    id="buffer", title="Buffer", category="geoprocessing", returns="layer",
-    description="Grow a zone of a given radius (in meters) around every feature "
-                "in a layer. Use for 'within X of', catchment zones, setbacks.",
+    id="buffer", title="Everything within a distance", category="shaping layers", returns="layer",
+    description="Draws a zone of a set distance in meters around everything in a "
+                "layer. Use it for questions like within 400 meters of a park, or for "
+                "a setback. Also called a buffer.",
     params={"type": "object", "required": ["layer", "distance_m"], "properties": {
         "layer": {"type": "object", "description": "a GeoJSON FeatureCollection"},
         "distance_m": {"type": "number", "description": "buffer radius in meters"}}},
@@ -162,9 +163,10 @@ def _run_spatial_join(params: dict) -> dict:
 
 
 register(Tool(
-    id="spatial_join", title="Spatial join", category="geoprocessing", returns="layer",
-    description="Attach attributes from one layer to another based on a spatial "
-                "relationship (which polygon a point falls in, etc).",
+    id="spatial_join", title="Combine two layers", category="shaping layers", returns="layer",
+    description="Attaches the information from one layer onto another wherever they "
+                "overlap, for example tagging each point with the neighborhood it "
+                "falls in. Also called a spatial join.",
     params={"type": "object", "required": ["target", "join"], "properties": {
         "target": {"type": "object", "description": "layer to keep (FeatureCollection)"},
         "join": {"type": "object", "description": "layer whose attributes to attach"},
@@ -191,10 +193,10 @@ def _run_clip(params: dict) -> dict:
 
 
 register(Tool(
-    id="clip", title="Clip to an area", category="geoprocessing", returns="layer",
-    description="Trim a layer down to what falls inside a boundary, such as an "
-                "area you drew on the map or a district polygon. Use it to scope "
-                "an analysis to one block, corridor, or study area.",
+    id="clip", title="Trim to an area", category="shaping layers", returns="layer",
+    description="Keeps only the part of a layer that falls inside a boundary, such as "
+                "an area you drew on the map. Use it to focus an analysis on one "
+                "block, corridor, or study area. Also called a clip, or intersect.",
     params={"type": "object", "required": ["layer", "boundary"], "properties": {
         "layer": {"type": "object", "description": "the layer to trim (FeatureCollection)"},
         "boundary": {"type": "object",
@@ -215,9 +217,11 @@ def _run_osm(params: dict) -> dict:
 
 
 register(Tool(
-    id="osm", title="OpenStreetMap features", category="connector", returns="layer",
-    description="Fetch map features (parks, schools, shops, transit, roads...) "
-                "from OpenStreetMap for a bounding box. Key-free.",
+    id="osm", title="Get map data for this view", category="map data", returns="layer",
+    description="Pulls real features (parks, schools, shops, restaurants, transit "
+                "stops, roads) straight from OpenStreetMap for wherever the map is "
+                "pointed. Free, and no key needed. Also called an OSM or Overpass "
+                "query.",
     params={"type": "object", "required": ["bbox"], "properties": {
         "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4,
                  "description": "[west, south, east, north] in degrees"},
@@ -247,10 +251,11 @@ def _run_coolwalk(params: dict) -> dict:
 
 
 register(Tool(
-    id="coolwalk", title="CoolWalk (shade routing)", category="planning", returns="layer",
-    description="Find the coolest (most tree-shaded) walking route between two "
-                "points vs the fastest, for a time of day. Use for heat-safe "
-                "pedestrian routing.",
+    id="coolwalk", title="Find the shadiest walk", category="getting around", returns="layer",
+    description="Compares the fastest walking route with the most tree-shaded one "
+                "between two points at a given time of day, so you can see what shade "
+                "costs in extra minutes. New York only, because it uses the city "
+                "street tree census. Also called shade routing.",
     params={"type": "object", "required": ["from", "to"], "properties": {
         "from": {"type": "array", "items": {"type": "number"}, "description": "[lat, lon] start"},
         "to": {"type": "array", "items": {"type": "number"}, "description": "[lat, lon] destination"},
@@ -299,11 +304,12 @@ def _run_cost(params: dict) -> dict:
 
 
 register(Tool(
-    id="cost_estimate", title="Cost estimate", category="fiscal", returns="value",
-    description="Estimate the budget for building something (trees, sidewalk, "
-                "water/sewer/electric line, bike lane, gazebo...) from its drawn "
-                "geometry x a public unit cost. Points are counted, lines measured "
-                "by length, polygons by area. Use for 'how much would this cost'.",
+    id="cost_estimate", title="What will this cost to build?", category="money", returns="value",
+    description="Budget for building something: trees, sidewalk, bike lane, water "
+                "main, sewer, underground electric, a bench, a streetlight, or "
+                "repaving. Give it a layer of what you plan to build and it prices "
+                "the job from editable public unit costs. Also called a cost "
+                "estimate.",
     params={"type": "object", "required": ["layer", "item"], "properties": {
         "layer": {"type": "object", "description": "GeoJSON of what to build"},
         "item": {"type": "string", "enum": list(UNIT_COSTS.keys()),
@@ -334,11 +340,12 @@ def _run_value_per_acre(params: dict) -> dict:
 
 
 register(Tool(
-    id="value_per_acre", title="Value per acre (fiscal productivity)",
-    category="fiscal", returns="layer",
-    description="Compute taxable value (and optionally tax revenue) per acre for "
-                "each parcel, revealing which land is most fiscally productive. "
-                "Needs a parcel layer with an assessed-value field.",
+    id="value_per_acre", title="Which land pays for itself?",
+    category="money", returns="layer",
+    description="Ranks parcels by how much taxable value each acre carries, the "
+                "number that shows which blocks fund the city and which are "
+                "subsidized by them. Needs a parcel layer with a value column. Also "
+                "called value per acre, or fiscal productivity.",
     params={"type": "object", "required": ["layer"], "properties": {
         "layer": {"type": "object", "description": "parcel GeoJSON with a value field"},
         "value_field": {"type": "string", "description": "value column (default assessed_value)"},
@@ -363,10 +370,10 @@ def _run_benefit_cost(params: dict) -> dict:
 
 
 register(Tool(
-    id="benefit_cost", title="Benefit-cost / ROI", category="fiscal", returns="value",
-    description="Discounted benefit-cost analysis of a project: net present value, "
-                "benefit-cost ratio, and payback period. Pair with cost_estimate "
-                "(the cost) and an annual benefit (stormwater/energy/health savings).",
+    id="benefit_cost", title="Is it worth it?", category="money", returns="value",
+    description="Weighs an upfront cost against a yearly benefit over time and "
+                "returns the net present value, the benefit-to-cost ratio, and the "
+                "year it pays itself back. Also called benefit-cost analysis, or ROI.",
     params={"type": "object", "required": ["cost", "annual_benefit"], "properties": {
         "cost": {"type": "number", "description": "upfront capital cost (USD)"},
         "annual_benefit": {"type": "number", "description": "recurring annual benefit (USD/yr)"},
@@ -412,10 +419,11 @@ def _run_walkshed(params: dict) -> dict:
 
 
 register(Tool(
-    id="walkshed", title="Walkshed (15-minute city)", category="planning", returns="layer",
-    description="The area reachable on foot from a point within a time budget "
-                "(a walking isochrone). Use for '15-minute city' access, catchment "
-                "areas, or what a location can reach on foot.",
+    id="walkshed", title="What is within a short walk?", category="getting around", returns="layer",
+    description="Shows everywhere a person can actually reach on foot in a set number "
+                "of minutes, following real streets instead of drawing a circle. Use "
+                "it for 15-minute-city access, catchment areas, or what a site can "
+                "reach. Also called a walkshed, or isochrone.",
     params={"type": "object", "required": ["point"], "properties": {
         "point": {"type": "array", "items": {"type": "number"}, "description": "[lat, lon] origin"},
         "minutes": {"type": "number", "description": "walk-time budget (default 15)"},
@@ -442,10 +450,10 @@ def _run_clearance(params: dict) -> dict:
 
 
 register(Tool(
-    id="clearance_check", title="Utility clearance check", category="planning", returns="layer",
-    description="Flag proposed features (e.g. new trees) that fall within a "
-                "clearance distance of utility lines (water, sewer, electric), so "
-                "you can see conflicts before you plant or build.",
+    id="clearance_check", title="What is too close to utility lines?", category="safety", returns="layer",
+    description="Flags anything you plan to put in the ground that sits within a safe "
+                "distance of water, sewer, gas, or electric lines, so conflicts show "
+                "up before design does. Also called a clearance or setback check.",
     params={"type": "object", "required": ["features", "utilities"], "properties": {
         "features": {"type": "object", "description": "proposed features GeoJSON (e.g. trees)"},
         "utilities": {"type": "object", "description": "utility lines GeoJSON to keep clear of"},
@@ -474,9 +482,10 @@ def _run_density(params: dict) -> dict:
 
 
 register(Tool(
-    id="density_hexbin", title="Density hotspots (H3)", category="geoprocessing", returns="layer",
-    description="Aggregate a point layer into H3 hexagons colored by how many "
-                "points fall in each, revealing concentrations (a hotspot map).",
+    id="density_hexbin", title="Where is it most concentrated?", category="shaping layers", returns="layer",
+    description="Groups points into hexagons and colors them by how many fall in "
+                "each, so clusters and empty gaps are obvious at a glance. Also "
+                "called a density hexbin, or H3 aggregation.",
     params={"type": "object", "required": ["layer"], "properties": {
         "layer": {"type": "object", "description": "point GeoJSON to aggregate"},
         "resolution": {"type": "integer", "description": "H3 resolution 7-10 (default 8, higher = finer)"}}},

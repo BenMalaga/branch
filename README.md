@@ -25,7 +25,7 @@ and a function the optional assistant can call.
 | Planning | CoolWalk shade routing, walkshed (15-minute-city isochrone), utility clearance check |
 | Fiscal | cost estimate, value per acre, benefit-cost / ROI |
 | Geoprocessing | buffer, spatial join, clip to an area, density hotspots |
-| Data | OpenStreetMap features |
+| Data | OpenStreetMap features, dated historical satellite imagery (2014 to now) |
 
 Each tool reprojects to the metric coordinate system local to the ground it is
 measuring (its own UTM zone, so a length is a length anywhere on earth),
@@ -63,9 +63,10 @@ That serves the same app at `http://localhost:8000`. A `Dockerfile` and a
 ## The assistant is optional
 
 The "Ask the map" bar calls the same tools listed above. Bring your own model
-key (Anthropic or OpenAI, kept only in your browser) or run a local model with
-Ollama, so your data never leaves your machine. Without a key, every tool still
-works as a button.
+key (Anthropic or OpenAI), kept only in your browser and never stored. Without a
+key every tool still works as a button, so the assistant is a convenience, not a
+gate. Ollama is supported when you run branch on your own machine, where branch
+can reach it.
 
 ## Use it beside ArcGIS
 
