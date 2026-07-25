@@ -113,6 +113,11 @@
     border-radius:6px;padding:2px 7px;text-transform:capitalize}
   .rbreak b{color:var(--ink);font-weight:600}
   .rnote{margin-top:10px;font-size:10.5px;color:var(--faint);line-height:1.45}
+  table.prof{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.prof th{text-align:left;color:var(--faint);font-weight:600;padding:4px 6px 4px 0;border-bottom:1px solid var(--line)}
+  table.prof td{padding:4px 6px 4px 0;border-bottom:1px solid rgba(35,44,38,.6);color:var(--muted);vertical-align:top}
+  table.prof td:first-child{color:var(--ink)}
+  table.prof td.warn{color:var(--amber)}
   .sv{padding:11px 0;border-bottom:1px solid var(--line)}
   .sv input.nm{width:100%;background:none;border:1px solid transparent;border-radius:7px;color:var(--ink);
     font:inherit;font-size:13px;font-weight:600;padding:3px 6px}
@@ -741,12 +746,13 @@ async function runTool(t,dlg){
 // ---------- LAYERS ----------
 function layersHTML(){
   if(!layers.length) return areaReportHTML()+`<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
-  return areaReportHTML()+`<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
+  return areaReportHTML()+profileHTML()+`<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
     +`<button class="btn wide" onclick="copyShareLink(this)" style="margin-bottom:14px">Copy a link that rebuilds this</button>`
     +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><input type="color" class="dot" data-i="${i}" value="${l.color}" oninput="setLayerColor(${i},this.value)" aria-label="Colour for ${esc(l.name)}" title="Layer colour"><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><input class="nm" value="${esc(l.name)}" data-i="${i}" aria-label="Rename this layer" title="Click to rename"><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
     +`<div class="lctl">`
       +`<input type="range" min="0" max="100" value="${Math.round((l.opacity==null?1:l.opacity)*100)}" oninput="setLayerOpacity(${i},this.value)" aria-label="Opacity of ${esc(l.name)}" title="Opacity">`
       +`<button type="button" onclick="openTable(${i})" title="Open the attribute table">Table</button>`
+      +`<button type="button" onclick="showProfile(${i})" title="Field types, missing values and ranges">Check</button>`
       +`<button type="button" onclick="zoomToLayer(${i})" title="Zoom to this layer">Zoom</button>`
       +`<button type="button" onclick="soloLayer(${i})" title="Show only this layer">Only</button>`
       +`<button type="button" onclick="duplicateLayer(${i})" title="Duplicate this layer">Copy</button>`
@@ -779,6 +785,61 @@ function wireLayers(){
       if(e.key==="Escape"){ inp.value=layers[+inp.dataset.i].name; inp.blur(); }
     };
   });
+}
+
+// ---------- DATA QUALITY ----------
+// What did I actually just load? Field types, how much is missing, and the range
+// of every number, so a planner can see the shape of their data before trusting a
+// map built on it. All client side, no server call.
+function profileLayer(L){
+  const fs=L.geojson.features||[];
+  const cols={};
+  fs.forEach(f=>Object.entries(f.properties||{}).forEach(([k,v])=>{
+    const c=cols[k]||(cols[k]={n:0,nulls:0,nums:[],texts:new Set(),bools:0});
+    if(v===null||v===undefined||v===""){ c.nulls++; return; }
+    c.n++;
+    if(typeof v==="number"&&isFinite(v)) c.nums.push(v);
+    else if(typeof v==="boolean") c.bools++;
+    else c.texts.add(String(v));
+  }));
+  const geomTypes={};
+  let bad=0;
+  fs.forEach(f=>{
+    const t=(f.geometry||{}).type;
+    if(!t||!f.geometry.coordinates||!f.geometry.coordinates.length){ bad++; return; }
+    geomTypes[t]=(geomTypes[t]||0)+1;
+  });
+  const fields=Object.entries(cols).map(([name,c])=>{
+    const total=c.n+c.nulls;
+    const kind=c.nums.length>=c.n*0.8&&c.nums.length?"number"
+      :(c.bools>=c.n*0.8&&c.bools?"true/false":"text");
+    const out={name,kind,missing:c.nulls,pct:total?Math.round(100*c.nulls/total):0};
+    if(kind==="number"&&c.nums.length){ const st=fieldStats(c.nums);
+      out.lo=st.lo; out.hi=st.hi; out.median=st.median; }
+    if(kind==="text") out.distinct=c.texts.size;
+    return out;
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+  return {count:fs.length, bad, geomTypes, fields};
+}
+window.showProfile=i=>{ profileFor=layers[i]||null; showTab("layers"); };
+window.clearProfile=()=>{ profileFor=null; showTab("layers"); };
+let profileFor=null;
+function profileHTML(){
+  if(!profileFor||!layers.includes(profileFor)) return "";
+  const p=profileLayer(profileFor);
+  const geom=Object.entries(p.geomTypes).map(([k,n])=>`${n} ${k.toLowerCase()}`).join(", ")||"none";
+  return `<div class="report"><div class="rhead"><b>Inside ${esc(profileFor.name)}</b>`
+    +`<button class="dx" onclick="clearProfile()" aria-label="Close this data profile">&times;</button></div>`
+    +`<div class="sub" style="margin:0 0 10px">${p.count.toLocaleString()} features &middot; ${esc(geom)}`
+    +`${p.bad?` &middot; <span style="color:var(--err-ink)">${p.bad} with no usable geometry</span>`:""}</div>`
+    +(p.fields.length?`<table class="prof"><thead><tr><th>field</th><th>type</th><th>missing</th><th>range</th></tr></thead><tbody>`
+      +p.fields.map(f=>`<tr><td>${esc(f.name)}</td><td>${f.kind}</td>`
+        +`<td class="${f.pct>20?"warn":""}">${f.missing?`${f.missing} (${f.pct}%)`:"none"}</td>`
+        +`<td>${f.kind==="number"?`${fmtNum(f.name,f.lo)} to ${fmtNum(f.name,f.hi)}, median ${fmtNum(f.name,f.median)}`
+             :(f.kind==="text"?`${f.distinct} distinct`:"")}</td></tr>`).join("")
+      +`</tbody></table>`
+      :`<div class="sub">This layer carries no attributes, only geometry.</div>`)
+    +`</div>`;
 }
 
 // ---------- SAVED WORK ----------
@@ -901,12 +962,68 @@ function readFile(f){
   r.onerror=()=>{ showTab("ask"); pushMsg("err",`Could not open ${esc(f.name)}.`,"err"); };
   r.readAsText(f);
 }
+// A real CSV parser: quoted fields, embedded commas and escaped quotes. The old
+// split(",") mangled any address with a comma in it.
+function parseCsv(txt){
+  const rows=[]; let row=[], cell="", q=false;
+  const t=txt.replace(/^\uFEFF/,"");          // strip a BOM from Excel exports
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(q){
+      if(c==='"'){ if(t[i+1]==='"'){ cell+='"'; i++; } else q=false; }
+      else cell+=c;
+    } else if(c==='"') q=true;
+    else if(c===","){ row.push(cell); cell=""; }
+    else if(c==="\n"){ row.push(cell); rows.push(row); row=[]; cell=""; }
+    else if(c!=="\r") cell+=c;
+  }
+  if(cell!==""||row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r=>r.some(v=>String(v).trim()!==""));
+}
+// Everything used to arrive as a string, which quietly made an uploaded column
+// unusable: no choropleth, no numeric filter, no statistics. Type it on the way in.
+function coerce(v){
+  const t=String(v).trim();
+  if(t==="") return null;
+  if(/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)){                  // 1,234,567.89
+    const n=Number(t.replace(/,/g,"")); if(isFinite(n)) return n;
+  }
+  if(/^\$?-?\d*\.?\d+%?$/.test(t)){
+    const n=Number(t.replace(/[$%]/g,""));
+    if(isFinite(n)) return t.endsWith("%")?n:n;
+  }
+  const low=t.toLowerCase();
+  if(low==="true") return true;
+  if(low==="false") return false;
+  return t;
+}
 function csvToGeo(txt){
-  const lines=txt.trim().split(/\r?\n/), head=lines[0].split(",").map(s=>s.trim().toLowerCase());
-  const la=head.findIndex(h=>["lat","latitude","y"].includes(h)), lo=head.findIndex(h=>["lon","lng","long","longitude","x"].includes(h));
-  if(la<0||lo<0) throw new Error("need lat/lon columns");
-  const feats=lines.slice(1).map(l=>{const c=l.split(","),p={};head.forEach((h,i)=>p[h]=c[i]);return {type:"Feature",geometry:{type:"Point",coordinates:[+c[lo],+c[la]]},properties:p};}).filter(f=>!isNaN(f.geometry.coordinates[0]));
-  return {type:"FeatureCollection",features:feats};
+  const rows=parseCsv(txt);
+  if(rows.length<2) throw new Error("that file has no rows under its header");
+  const head=rows[0].map(h=>String(h).trim());
+  const lower=head.map(h=>h.toLowerCase());
+  const la=lower.findIndex(h=>["lat","latitude","y"].includes(h));
+  const lo=lower.findIndex(h=>["lon","lng","long","longitude","x"].includes(h));
+  if(la<0||lo<0) throw new Error("it needs a latitude and a longitude column "
+    +"(named lat/latitude/y and lon/lng/longitude/x). Found: "+head.slice(0,8).join(", "));
+  // Strip-then-parse turned "notalat" into 0, which is a real place in the Gulf of
+  // Guinea. A coordinate has to actually look like a number to count as one.
+  const asCoord=v=>{
+    const t=String(v==null?"":v).trim().replace(/^\+/,"");
+    return /^-?\d*\.?\d+(e[+-]?\d+)?$/i.test(t)?Number(t):NaN;
+  };
+  let dropped=0;
+  const feats=[];
+  rows.slice(1).forEach(c=>{
+    const y=asCoord(c[la]), x=asCoord(c[lo]);
+    if(!isFinite(x)||!isFinite(y)||Math.abs(y)>90||Math.abs(x)>180){ dropped++; return; }
+    const p={};
+    head.forEach((h,i)=>{ if(i!==la&&i!==lo) p[h]=coerce(c[i]); });
+    p.latitude=y; p.longitude=x;
+    feats.push({type:"Feature",geometry:{type:"Point",coordinates:[x,y]},properties:p});
+  });
+  if(!feats.length) throw new Error("none of the rows had a usable latitude and longitude");
+  return {type:"FeatureCollection",features:feats,_dropped:dropped};
 }
 
 // ---------- draw ----------
