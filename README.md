@@ -27,9 +27,15 @@ and a function the optional assistant can call.
 | Geoprocessing | buffer, spatial join, clip to an area, density hotspots |
 | Data | OpenStreetMap features |
 
-Each tool reprojects to a metric coordinate system, validates geometry, and
-returns its result together with a small recipe (the tool plus the exact
-parameters it ran), so any answer can be reproduced.
+Each tool reprojects to the metric coordinate system local to the ground it is
+measuring (its own UTM zone, so a length is a length anywhere on earth),
+validates geometry, and returns its result together with a small recipe (the
+tool plus the exact parameters it ran), so any answer can be reproduced.
+
+Where a dataset does not reach, branch refuses instead of guessing. The street
+tree census is a New York dataset, so asking for shade routing outside New York
+returns an error naming the source and its extent, rather than an empty result
+that would read as "no shade anywhere".
 
 ## Quickstart
 

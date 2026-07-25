@@ -18,7 +18,7 @@ import osmnx as ox
 import requests
 from shapely.geometry import LineString, Point
 
-from . import config
+from . import config, geoutil, sources
 from .config import Area
 
 ox.settings.use_cache = True
@@ -73,7 +73,8 @@ def get_graph(area: Area, data_dir: str = config.DATA_DIR,
             G = ox.graph.graph_from_bbox(area.bbox, network_type=network_type,
                                          simplify=True)
             ox.io.save_graphml(G, path)
-    G = ox.projection.project_graph(G, to_crs=config.METRIC_CRS)
+    geoutil.use_metric_crs(area.metric_crs)
+    G = ox.projection.project_graph(G, to_crs=area.metric_crs)
     _ensure_edge_geometry(G)
     return G
 
@@ -141,6 +142,7 @@ def get_trees(area: Area, data_dir: str = config.DATA_DIR) -> gpd.GeoDataFrame:
 
     Columns: tree_id, dbh (inches), species, health, geometry (points).
     """
+    sources.require("nyc_street_trees", area.bbox)
     os.makedirs(data_dir, exist_ok=True)
     path = os.path.join(data_dir, f"{area.key}_trees.geojson")
     if os.path.exists(path):
@@ -151,7 +153,8 @@ def get_trees(area: Area, data_dir: str = config.DATA_DIR) -> gpd.GeoDataFrame:
             gdf.to_file(path, driver="GeoJSON")
     if gdf.crs is None:
         gdf = gdf.set_crs(config.WGS84)
-    return gdf.to_crs(config.METRIC_CRS)
+    geoutil.use_metric_crs(area.metric_crs)
+    return gdf.to_crs(area.metric_crs)
 
 
 def get_named_streets(area: Area, data_dir: str = config.DATA_DIR
@@ -169,7 +172,8 @@ def get_named_streets(area: Area, data_dir: str = config.DATA_DIR
         G = ox.graph.graph_from_bbox(area.bbox, network_type="drive",
                                      simplify=True)
         ox.io.save_graphml(G, path)
-    G = ox.projection.project_graph(G, to_crs=config.METRIC_CRS)
+    geoutil.use_metric_crs(area.metric_crs)
+    G = ox.projection.project_graph(G, to_crs=area.metric_crs)
     _ensure_edge_geometry(G)
 
     streets = []

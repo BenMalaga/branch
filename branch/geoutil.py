@@ -5,28 +5,52 @@ wrap pyproj so the rest of the code never touches transformer boilerplate.
 """
 from __future__ import annotations
 
+import contextvars
+from functools import lru_cache
+
 from pyproj import Transformer
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform
 
 from . import config
 
-_TO_METRIC = Transformer.from_crs(config.WGS84, config.METRIC_CRS, always_xy=True)
-_TO_WGS = Transformer.from_crs(config.METRIC_CRS, config.WGS84, always_xy=True)
+# The metric CRS is a property of the ground being measured, not of the process,
+# so it travels with the request. A ContextVar keeps that per-thread, which the
+# threaded server needs: two users in different UTM zones must not share one.
+_ACTIVE_CRS = contextvars.ContextVar("metric_crs", default=config.METRIC_CRS)
 
 
-def latlon_to_xy(lat: float, lon: float) -> tuple[float, float]:
+@lru_cache(maxsize=128)
+def _transformers(crs: str) -> tuple[Transformer, Transformer]:
+    return (Transformer.from_crs(config.WGS84, crs, always_xy=True),
+            Transformer.from_crs(crs, config.WGS84, always_xy=True))
+
+
+def use_metric_crs(crs: str) -> None:
+    """Make ``crs`` the metric CRS for work on the current thread."""
+    _ACTIVE_CRS.set(crs)
+
+
+def active_metric_crs() -> str:
+    """The metric CRS currently in force."""
+    return _ACTIVE_CRS.get()
+
+
+def latlon_to_xy(lat: float, lon: float, crs: str | None = None) -> tuple[float, float]:
     """(lat, lon) degrees -> (x, y) meters in the metric CRS."""
-    x, y = _TO_METRIC.transform(lon, lat)
+    to_metric, _ = _transformers(crs or _ACTIVE_CRS.get())
+    x, y = to_metric.transform(lon, lat)
     return x, y
 
 
-def geom_to_wgs(geom: BaseGeometry) -> BaseGeometry:
+def geom_to_wgs(geom: BaseGeometry, crs: str | None = None) -> BaseGeometry:
     """Reproject a metric-CRS shapely geometry to WGS84 (lon/lat)."""
-    return transform(_TO_WGS.transform, geom)
+    _, to_wgs = _transformers(crs or _ACTIVE_CRS.get())
+    return transform(to_wgs.transform, geom)
 
 
-def xy_to_latlon(x: float, y: float) -> tuple[float, float]:
+def xy_to_latlon(x: float, y: float, crs: str | None = None) -> tuple[float, float]:
     """(x, y) meters -> (lat, lon) degrees."""
-    lon, lat = _TO_WGS.transform(x, y)
+    _, to_wgs = _transformers(crs or _ACTIVE_CRS.get())
+    lon, lat = to_wgs.transform(x, y)
     return lat, lon

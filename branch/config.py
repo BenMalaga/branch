@@ -14,6 +14,10 @@ from dataclasses import dataclass
 # distances are in real meters, then results are reprojected back to WGS84 for
 # web maps. UTM zone 18N covers the entire NYC metro area.
 WGS84 = "EPSG:4326"
+# Fallback only. Every Area derives its own UTM zone (see Area.metric_crs);
+# projecting the whole world through one zone silently inflates distances and
+# areas the further you get from its central meridian (about +21% on a length
+# and +48% on an area by the time you reach Los Angeles).
 METRIC_CRS = "EPSG:32618"  # UTM 18N, units = meters
 
 
@@ -30,6 +34,19 @@ class Area:
     def center(self) -> tuple[float, float]:
         w, s, e, n = self.bbox
         return ((s + n) / 2.0, (w + e) / 2.0)  # (lat, lon)
+
+    @property
+    def metric_crs(self) -> str:
+        """The UTM zone this area actually sits in, as an EPSG code.
+
+        Distances and areas are only trustworthy in a projection local to the
+        ground being measured, so each area picks its own zone rather than
+        inheriting one. 326xx is northern hemisphere, 327xx southern.
+        """
+        lat, lon = self.center
+        zone = int((lon + 180.0) / 6.0) + 1
+        zone = min(max(zone, 1), 60)
+        return f"EPSG:{(32600 if lat >= 0 else 32700) + zone}"
 
 
 # Study areas. Park Slope is the default demo: a dense, tree-lined walkable
