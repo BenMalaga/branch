@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import math
 import os
+import threading
+from collections import OrderedDict
 
 import geopandas as gpd
 import networkx as nx
@@ -55,9 +57,52 @@ def area_from_bbox(bbox: tuple[float, float, float, float],
 
 
 # --- Street network ----------------------------------------------------------
+# The disk cache stops us re-downloading, but every request still paid to parse
+# the graphml, reproject it, and rebuild edge geometry, which is seconds of CPU
+# on a small instance. Keep the finished graph in memory instead. Two entries is
+# deliberate: this runs on a 512MB box and a prepared graph is not small.
+PREPARED_CACHE_SIZE = 2
+_PREPARED: "OrderedDict[tuple, nx.MultiDiGraph]" = OrderedDict()
+_PREPARED_LOCK = threading.Lock()
+
+
+def clear_prepared_cache() -> None:
+    """Drop the in-memory graphs (used by tests)."""
+    with _PREPARED_LOCK:
+        _PREPARED.clear()
+
+
+def _cached_prepared(key: tuple) -> nx.MultiDiGraph | None:
+    with _PREPARED_LOCK:
+        G = _PREPARED.get(key)
+        if G is not None:
+            _PREPARED.move_to_end(key)
+        return G
+
+
+def _store_prepared(key: tuple, G: nx.MultiDiGraph) -> None:
+    with _PREPARED_LOCK:
+        _PREPARED[key] = G
+        _PREPARED.move_to_end(key)
+        while len(_PREPARED) > PREPARED_CACHE_SIZE:
+            _PREPARED.popitem(last=False)
+
+
 def get_graph(area: Area, data_dir: str = config.DATA_DIR,
-              network_type: str = config.NETWORK_TYPE) -> nx.MultiDiGraph:
-    """Return the projected (metric) walkable graph for ``area``, using cache."""
+              network_type: str = config.NETWORK_TYPE,
+              copy: bool = False) -> nx.MultiDiGraph:
+    """Return the projected (metric) walkable graph for ``area``, using cache.
+
+    The returned graph is SHARED. Pass ``copy=True`` if you are going to write
+    attributes onto it (shade, weights), or you will hand the next request your
+    leftovers.
+    """
+    key = (area.key, network_type, area.metric_crs)
+    cached = _cached_prepared(key)
+    if cached is not None:
+        geoutil.use_metric_crs(area.metric_crs)
+        return cached.copy() if copy else cached
+
     os.makedirs(data_dir, exist_ok=True)
     path = os.path.join(data_dir, f"{area.key}_{network_type}.graphml")
     if os.path.exists(path):
@@ -76,7 +121,8 @@ def get_graph(area: Area, data_dir: str = config.DATA_DIR,
     geoutil.use_metric_crs(area.metric_crs)
     G = ox.projection.project_graph(G, to_crs=area.metric_crs)
     _ensure_edge_geometry(G)
-    return G
+    _store_prepared(key, G)
+    return G.copy() if copy else G
 
 
 def _bbox_from_key(fname: str, network_type: str) -> tuple | None:

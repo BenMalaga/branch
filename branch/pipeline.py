@@ -18,7 +18,7 @@ def analyze(area: Area, when_local: str, alpha: float,
     lat, lon = area.center
     altitude, azimuth = solar.sun_position(lat, lon, when_utc)
 
-    G = data.get_graph(area, data_dir)
+    G = data.get_graph(area, data_dir, copy=True)   # annotate_edges writes onto it
     trees = data.get_trees(area, data_dir)
 
     shadows = shade.compute_shadows(trees, altitude, azimuth)

@@ -401,10 +401,13 @@ def _run_walkshed(params: dict) -> dict:
     bbox = (lon - pad, lat - pad, lon + pad, lat + pad)
 
     G = data.get_graph(data.area_from_bbox(bbox))
-    for _, _, d in G.edges(data=True):
-        d["time_s"] = d["length"] / speed_ms
     center = routing.nearest_node(G, lat, lon)
-    reachable = nx.ego_graph(G, center, radius=minutes * 60, distance="time_s")
+    # Walking time is a property of this request (its speed), not of the graph,
+    # so it is computed on the fly rather than written onto shared edges.
+    def walk_time(u, v, edge):
+        best = min((e.get("length", 0.0) for e in edge.values()), default=0.0)
+        return best / speed_ms
+    reachable = nx.ego_graph(G, center, radius=minutes * 60, distance=walk_time)
 
     geoms = [d["geometry"] for u, v, d in reachable.edges(data=True)]
     if not geoms:
