@@ -119,7 +119,11 @@
   .badge{float:right;font-family:var(--mono);font-size:9.5px;color:var(--faint);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;margin-left:8px}
 
   .layer{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
-  .dot{width:12px;height:12px;border-radius:4px;flex:none}
+  .dot{width:14px;height:14px;border-radius:4px;flex:none;padding:0;border:1px solid var(--line2);
+    background:none;cursor:pointer;appearance:none}
+  .dot::-webkit-color-swatch-wrapper{padding:0}
+  .dot::-webkit-color-swatch{border:none;border-radius:3px}
+  .dot::-moz-color-swatch{border:none;border-radius:3px}
   .layer input.nm{flex:1;min-width:0;background:none;border:1px solid transparent;border-radius:7px;
     color:var(--ink);font:inherit;font-size:12.5px;padding:3px 6px;text-overflow:ellipsis}
   .layer input.nm:hover{border-color:var(--line2)}
@@ -138,6 +142,9 @@
   .legend{margin:1px 0 11px 22px}
   .legend .lgtop{color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin-bottom:4px}
   .legend .lgbar{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--ramp-lo),var(--ramp-mid),var(--ramp-hi))}
+  .legend .lgsteps{display:flex;height:8px;border-radius:4px;overflow:hidden}
+  .legend .lgsteps span{flex:1}
+  .legend .lgstat{margin-top:4px;font-size:10.5px;color:var(--faint)}
   .legend .lgends{display:flex;justify-content:space-between;margin-top:3px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
   .empty{font-size:12.5px;color:var(--faint);text-align:center;padding:34px 12px;line-height:1.65}
   .empty svg{width:30px;height:30px;opacity:.5;margin-bottom:10px}
@@ -331,11 +338,44 @@ function addLayer(name,geojson,opts={}){
 }
 // choropleth: color features by a numeric value where one exists
 const GRAD_FIELDS=["value_per_acre","tax_per_acre","count","suitability","score","reach_acres"];
-function gradField(gj){ const fs=gj.features||[]; for(const c of GRAD_FIELDS){ if(fs.some(f=>typeof (f.properties||{})[c]==="number")) return c; } return null; }
+function numericFields(gj){
+  const fs=gj.features||[], out=[];
+  fs.slice(0,300).forEach(f=>Object.entries(f.properties||{}).forEach(([k,v])=>{
+    if(typeof v==="number"&&isFinite(v)&&!out.includes(k)) out.push(k);
+  }));
+  return out;
+}
+function gradField(gj){
+  const nums=numericFields(gj);
+  return GRAD_FIELDS.find(c=>nums.includes(c)) || nums[0] || null;   // any number beats none
+}
+const RAMP=["#14402a","#22553a","#317f52","#4bab72","#7cc796","#b7e4c7"];
+// Land value and density are heavily right-skewed: a linear ramp paints almost
+// everything the darkest shade and hides the finding. Quantile breaks put an
+// equal share of features in each colour, which is what makes the map readable.
+function quantileBreaks(values,n){
+  const v=[...values].sort((a,b)=>a-b), out=[];
+  for(let i=1;i<n;i++){
+    const q=v[Math.floor(i*v.length/n)];
+    if(out.length===0||q>out[out.length-1]) out.push(q);   // strictly ascending, or MapLibre throws
+  }
+  return out;
+}
 function gradColor(field,gj){
-  const v=(gj.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number");
-  const lo=Math.min(...v), hi=Math.max(...v); const h=hi>lo?hi:lo+1;
-  return ["interpolate",["linear"],["get",field], lo,"#14402a",(lo+h)/2,"#4bab72",h,"#b7e4c7"];
+  const v=(gj.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number"&&isFinite(x));
+  if(!v.length) return RAMP[3];
+  const breaks=quantileBreaks(v,RAMP.length);
+  if(!breaks.length) return RAMP[3];                        // every value identical
+  const expr=["step",["get",field],RAMP[0]];
+  breaks.forEach((b,i)=>expr.push(b,RAMP[Math.min(i+1,RAMP.length-1)]));
+  return expr;
+}
+function fieldStats(values){
+  const v=[...values].sort((a,b)=>a-b), n=v.length;
+  const mid=Math.floor(n/2);
+  return {n, lo:v[0], hi:v[n-1],
+          median:n%2?v[mid]:(v[mid-1]+v[mid])/2,
+          mean:v.reduce((a,b)=>a+b,0)/n};
 }
 const FIELD_LABEL={value_per_acre:"value / acre",tax_per_acre:"tax / acre",count:"count",suitability:"suitability",score:"score",reach_acres:"reach (acres)"};
 function fmtVal(field,n){ if(n==null||isNaN(n))return "-"; const money=field==="value_per_acre"||field==="tax_per_acre"; const a=Math.abs(n); let s; if(a>=1e6)s=(n/1e6).toFixed(1).replace(/\.0$/,"")+"M"; else if(a>=1e3)s=(n/1e3).toFixed(1).replace(/\.0$/,"")+"k"; else s=(Math.round(n*10)/10).toString(); return money?"$"+s:s; }
@@ -343,7 +383,10 @@ function drawLayer(L){
   if(map.getSource(L.id)) return;
   map.addSource(L.id,{type:"geojson",data:L.geojson});
   const field=gradField(L.geojson); L.field=field;
-  if(field){ const gv=(L.geojson.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number"); L.lo=Math.min(...gv); L.hi=Math.max(...gv); }
+  if(field){
+    const gv=(L.geojson.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number"&&isFinite(x));
+    if(gv.length){ L.stats=fieldStats(gv); L.lo=L.stats.lo; L.hi=L.stats.hi; L.breaks=quantileBreaks(gv,RAMP.length); }
+  }
   const col=field?gradColor(field,L.geojson):L.color;
   map.addLayer({id:L.id+"-fill",source:L.id,type:"fill",filter:["==","$type","Polygon"],paint:{"fill-color":col,"fill-opacity":field?0.6:0.22}});
   map.addLayer({id:L.id+"-line",source:L.id,type:"line",filter:["!=","$type","Point"],paint:{"line-color":field?"#0e1311":L.color,"line-width":field?0.6:2.5}});
@@ -379,6 +422,21 @@ window.zoomToLayer=i=>{ const L=layers[i]; if(L) fitTo(L.geojson); };
 window.soloLayer=i=>{
   const only=layers.filter((_,n)=>n!==i).every(l=>!l.visible);   // already solo: restore all
   layers.forEach((l,n)=>{ l.visible=only?true:(n===i); setVis(l); });
+  showTab("layers");
+};
+window.setLayerColor=(i,v)=>{
+  const L=layers[i]; if(!L) return;
+  L.color=v;
+  if(!L.field){ if(map.getLayer(L.id+"-fill")) map.setPaintProperty(L.id+"-fill","fill-color",v);
+                if(map.getLayer(L.id+"-pt")) map.setPaintProperty(L.id+"-pt","circle-color",v); }
+  if(map.getLayer(L.id+"-line")) map.setPaintProperty(L.id+"-line","line-color",L.field?"#0e1311":v);
+  const dot=document.querySelector(`.layer .dot[data-i="${i}"]`);
+  if(dot) dot.style.background=v;
+};
+window.duplicateLayer=i=>{
+  const L=layers[i]; if(!L) return;
+  const copy=addLayer(L.name+" copy",JSON.parse(JSON.stringify(L.geojson)),{fit:false,src:L.src?{...L.src}:null});
+  copy.opacity=L.opacity;
   showTab("layers");
 };
 window.setLayerOpacity=(i,v)=>{ const L=layers[i]; if(!L) return; L.opacity=+v/100; applyOpacity(L); };
@@ -573,15 +631,20 @@ function layersHTML(){
   if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
   return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
     +`<button class="btn wide" onclick="copyShareLink(this)" style="margin-bottom:14px">Copy a link that rebuilds this</button>`
-    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><input class="nm" value="${esc(l.name)}" data-i="${i}" aria-label="Rename this layer" title="Click to rename"><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
+    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><input type="color" class="dot" data-i="${i}" value="${l.color}" oninput="setLayerColor(${i},this.value)" aria-label="Colour for ${esc(l.name)}" title="Layer colour"><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><input class="nm" value="${esc(l.name)}" data-i="${i}" aria-label="Rename this layer" title="Click to rename"><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
     +`<div class="lctl">`
       +`<input type="range" min="0" max="100" value="${Math.round((l.opacity==null?1:l.opacity)*100)}" oninput="setLayerOpacity(${i},this.value)" aria-label="Opacity of ${esc(l.name)}" title="Opacity">`
       +`<button type="button" onclick="openTable(${i})" title="Open the attribute table">Table</button>`
       +`<button type="button" onclick="zoomToLayer(${i})" title="Zoom to this layer">Zoom</button>`
       +`<button type="button" onclick="soloLayer(${i})" title="Show only this layer">Only</button>`
+      +`<button type="button" onclick="duplicateLayer(${i})" title="Duplicate this layer">Copy</button>`
       +`<button type="button" onclick="moveLayer(${i},-1)" ${i===0?"disabled":""} title="Move up" aria-label="Move ${esc(l.name)} up">&uarr;</button>`
       +`<button type="button" onclick="moveLayer(${i},1)" ${i===layers.length-1?"disabled":""} title="Move down" aria-label="Move ${esc(l.name)} down">&darr;</button>`
-    +`</div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field)}</div><div class="lgbar"></div><div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div></div>`:"")).join("")+auditHTML();
+    +`</div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field.replace(/_/g," "))}</div>`
+      +`<div class="lgsteps">${RAMP.map((c,n)=>`<span style="background:${c}" title="${n===0?"lowest":n===RAMP.length-1?"highest":"class "+(n+1)}"></span>`).join("")}</div>`
+      +`<div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div>`
+      +(l.stats?`<div class="lgstat">median ${fmtVal(l.field,l.stats.median)} &middot; ${l.stats.n} feature${l.stats.n===1?"":"s"} &middot; equal-count classes</div>`:"")
+      +`</div>`:"")).join("")+auditHTML();
 }
 function wireLayers(){
   document.querySelectorAll(".lvis").forEach(c=>c.onchange=()=>{ const L=layers[+c.dataset.i]; L.visible=c.checked; setVis(L); });
@@ -740,6 +803,12 @@ const OVERLAYS=[
     {id:"ov-infra",type:"circle","source-layer":"infrastructure",minzoom:12,
      paint:{"circle-radius":3.4,"circle-color":"#e88a6a",
             "circle-stroke-width":1,"circle-stroke-color":BG}}]},
+  {id:"boundaries",label:"Boundaries",theme:"divisions",layers:[
+    {id:"ov-bounds",type:"line","source-layer":"division_boundary",
+     paint:{"line-color":"#b9a1f0","line-width":1.4,"line-dasharray":[3,2]}}]},
+  {id:"addresses",label:"Addresses",theme:"addresses",layers:[
+    {id:"ov-addr",type:"circle","source-layer":"address",minzoom:15,
+     paint:{"circle-radius":2.2,"circle-color":"#e6c07b"}}]},
   {id:"places",label:"Places",theme:"places",layers:[
     {id:"ov-places",type:"circle","source-layer":"place",minzoom:13,
      paint:{"circle-radius":3,"circle-color":"#6fa8e8",

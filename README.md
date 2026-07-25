@@ -26,7 +26,7 @@ and a function the optional assistant can call.
 | Fiscal | cost estimate, value per acre, benefit-cost / ROI |
 | Geoprocessing | buffer, spatial join, clip to an area, density hotspots |
 | Data | OpenStreetMap features, dated historical satellite imagery (2014 to now) |
-| Overlays | Buildings in 3D, roads, water, green cover, land use, infrastructure, places, streamed worldwide from Overture Maps |
+| Overlays | Buildings in 3D, roads, water, green cover, land use, infrastructure, boundaries, addresses and places, streamed worldwide from Overture Maps |
 
 Each tool reprojects to the metric coordinate system local to the ground it is
 measuring (its own UTM zone, so a length is a length anywhere on earth),
