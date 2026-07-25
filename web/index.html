@@ -89,6 +89,16 @@
   .recipe{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
   .err{background:rgba(232,138,106,.1);border:1px solid rgba(232,138,106,.3);color:#eab29f}
 
+  .vout{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:#141b16}
+  .vhead{padding-bottom:11px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+  .vlab{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+  .vbig{font-size:26px;font-weight:650;letter-spacing:-.02em;margin-top:3px}
+  .vrow{display:flex;justify-content:space-between;gap:14px;padding:7px 0;font-size:12.5px;color:var(--muted);border-bottom:1px solid rgba(35,44,38,.6)}
+  .vrow:last-of-type{border-bottom:none}
+  .vrow b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .vrec{margin-top:10px}
+  .vrec summary{font-size:11.5px;color:var(--faint);cursor:pointer}
+  .vrec summary:hover{color:var(--muted)}
   .tool{padding:11px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;cursor:pointer;transition:border-color .15s var(--ease),background .15s var(--ease)}
   .tool:hover{border-color:#3a4a41;background:#141b16}
   .tool .tt{font-size:13px;font-weight:600}
@@ -423,7 +433,7 @@ async function runTool(t,dlg){
     const d=await r.json();
     if(d.error){ out.innerHTML=`<div class="msg err" style="margin-top:12px">${esc(d.error)}</div>`; }
     else if(d.result&&d.result.type==="FeatureCollection"){ addLayer(t.title,d.result,{src:{t:t.id,p:srcp}}); out.innerHTML=`<div class="msg branch" style="margin-top:12px">Added ${d.result.features.length} features as a layer. See the Layers tab.</div>`; }
-    else{ out.innerHTML=`<div class="msg branch" style="margin-top:12px"><div class="recipe">${esc(JSON.stringify(d.result,null,2))}</div></div>`; }
+    else{ out.innerHTML=valueHTML(d.result,d.recipe); }
   }catch(e){ out.innerHTML=`<div class="msg err" style="margin-top:12px">Request failed.</div>`; }
   setLoading(false);
 }
@@ -559,6 +569,33 @@ function llmConfig(){ try{ const c=JSON.parse(localStorage.getItem("branch_llm")
 window.saveSettings=()=>{ const c={provider:$("prov").value,model:$("model").value||$("model").placeholder,key:$("key").value}; localStorage.setItem("branch_llm",JSON.stringify(c)); settings.close(); };
 
 // ---------- util ----------
+// A tool that returns numbers is usually answering a money question, so show it
+// as a readout rather than a JSON dump. The recipe stays one click away.
+const HEADLINE=["estimated_total_usd","npv_usd","benefit_cost_ratio","total_usd"];
+function fmtNum(k,v){
+  if(typeof v!=="number") return esc(String(v));
+  if(/_usd$|^cost$|budget/.test(k)) return "$"+Math.round(v).toLocaleString();
+  if(/ratio/.test(k)) return v.toFixed(2);
+  if(/years/.test(k)) return `${v} year${v===1?"":"s"}`;
+  if(/rate$/.test(k)) return (v*100).toFixed(1)+"%";
+  return (Math.round(v*100)/100).toLocaleString();
+}
+const labelOf=k=>k.replace(/_usd$/,"").replace(/_/g," ").replace(/\bnpv\b/,"net present value");
+function valueHTML(res,recipe){
+  if(!res||typeof res!=="object") return `<div class="msg branch" style="margin-top:12px">${esc(String(res))}</div>`;
+  const ent=Object.entries(res);
+  const hk=HEADLINE.find(h=>res[h]!==undefined) ?? (ent.find(([k,v])=>typeof v==="number")||[])[0];
+  const note=res.note;
+  const rows=ent.filter(([k])=>k!==hk&&k!=="note").map(([k,v])=>
+    `<div class="vrow"><span>${esc(labelOf(k))}</span><b>${fmtNum(k,v)}</b></div>`).join("");
+  return `<div class="vout">`
+    +(hk!==undefined?`<div class="vhead"><div class="vlab">${esc(labelOf(hk))}</div><div class="vbig">${fmtNum(hk,res[hk])}</div></div>`:"")
+    +rows
+    +(note?`<p class="sub" style="margin:10px 0 0">${esc(note)}</p>`:"")
+    +(recipe?`<details class="vrec"><summary>How this was computed</summary><div class="recipe">${esc(JSON.stringify(recipe,null,2))}</div></details>`:"")
+    +`</div>`;
+}
+
 // ---------- shareable, re-runnable analysis ----------
 // A link carries the recipe, not the data: opening it re-runs the same tools
 // against the same free sources, so the result is reproducible rather than a
