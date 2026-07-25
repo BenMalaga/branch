@@ -94,6 +94,16 @@
   .recipe{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
   .err{background:rgba(232,138,106,.1);border:1px solid rgba(232,138,106,.3);color:var(--err-ink)}
 
+  .report{border:1px solid var(--line2);border-radius:12px;padding:13px;margin-bottom:16px;background:var(--surface-2)}
+  .report .rhead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13.5px;margin-bottom:2px}
+  .rsec{padding:10px 0;border-top:1px solid var(--line)}
+  .rsec .rsech{font-size:12px;font-weight:600;color:var(--accent)}
+  .rsec .recrows{margin-top:5px}
+  .rbreak{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .rbreak span{font-size:10.5px;color:var(--muted);background:var(--surface);border:1px solid var(--line);
+    border-radius:6px;padding:2px 7px;text-transform:capitalize}
+  .rbreak b{color:var(--ink);font-weight:600}
+  .rnote{margin-top:10px;font-size:10.5px;color:var(--faint);line-height:1.45}
   .astep{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)}
   .astep:last-of-type{border-bottom:none}
   .anum{flex:none;width:21px;height:21px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
@@ -175,6 +185,7 @@
   .maplibregl-popup-close-button:hover{color:var(--ink);background:none}
   .rec .rectop{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
   .rec .recname{font-size:14px;font-weight:600;margin-top:2px;line-height:1.3}
+  .rec .reckind{font-size:11.5px;color:var(--accent);margin-top:1px;text-transform:capitalize}
   .rec .rechead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
     margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
   .rec .rechead span{font-size:11.5px;color:var(--muted)}
@@ -663,8 +674,8 @@ async function runTool(t,dlg){
 
 // ---------- LAYERS ----------
 function layersHTML(){
-  if(!layers.length) return `<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
-  return `<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
+  if(!layers.length) return areaReportHTML()+`<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
+  return areaReportHTML()+`<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
     +`<button class="btn wide" onclick="copyShareLink(this)" style="margin-bottom:14px">Copy a link that rebuilds this</button>`
     +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><input type="color" class="dot" data-i="${i}" value="${l.color}" oninput="setLayerColor(${i},this.value)" aria-label="Colour for ${esc(l.name)}" title="Layer colour"><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><input class="nm" value="${esc(l.name)}" data-i="${i}" aria-label="Rename this layer" title="Click to rename"><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
     +`<div class="lctl">`
@@ -673,6 +684,8 @@ function layersHTML(){
       +`<button type="button" onclick="zoomToLayer(${i})" title="Zoom to this layer">Zoom</button>`
       +`<button type="button" onclick="soloLayer(${i})" title="Show only this layer">Only</button>`
       +`<button type="button" onclick="duplicateLayer(${i})" title="Duplicate this layer">Copy</button>`
+      +((l.geojson.features||[]).some(f=>(f.geometry||{}).type&&String(f.geometry.type).includes("Polygon"))
+        ?`<button type="button" onclick="buildAreaReport(layers[${i}].geojson.features.find(f=>String((f.geometry||{}).type).includes('Polygon')).geometry)" title="Break down what is inside">In here</button>`:"")
       +`<button type="button" onclick="moveLayer(${i},-1)" ${i===0?"disabled":""} title="Move up" aria-label="Move ${esc(l.name)} up">&uarr;</button>`
       +`<button type="button" onclick="moveLayer(${i},1)" ${i===layers.length-1?"disabled":""} title="Move down" aria-label="Move ${esc(l.name)} down">&darr;</button>`
     +`</div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field.replace(/_/g," "))}</div>`
@@ -800,10 +813,165 @@ function finishDraw(e){
   const g=drawMode==="polygon"?{type:"Polygon",coordinates:[[...pts,pts[0]]]}:{type:"LineString",coordinates:pts};
   addLayer("drawn "+(drawMode==="polygon"?"area":drawMode),
     {type:"FeatureCollection",features:[{type:"Feature",geometry:g,properties:{drawn:true}}]},{fit:false,src:{d:g}});
+  if(drawMode==="polygon") buildAreaReport(g);   // the planner question, asked automatically
   drawPts=[]; drawPreview(); syncDrawUI();
 }
 
 // ---------- basemaps / search / settings ----------
+// --- what is actually inside this area ---------------------------------------
+// The planner question: draw a study area, get a breakdown of what it contains.
+// Answered from the vector tiles already in the browser, so it costs nothing and
+// returns instantly. It counts what is currently drawn, which is stated plainly
+// in the output rather than quietly implied.
+let reportGeom=null;
+function tally(map_,key){ map_[key]=(map_[key]||0)+1; }
+window.buildAreaReport=geom=>{
+  reportGeom=geom;
+  showTab("layers");
+};
+function areaReportHTML(){
+  if(!reportGeom) return "";
+  const totalM2=geomAreaM2(reportGeom);
+  const secs=[];
+  // overlays: query whatever is rendered, clip to the drawn shape, dedupe by id
+  const layerIds=[...activeOverlays].flatMap(id=>{
+    const ov=OVERLAYS.find(o=>o.id===id);
+    return ov?ov.layers.filter(l=>map.getLayer(l.id)).map(l=>({id:l.id,ov})):[];
+  });
+  let feats=[];
+  if(layerIds.length){
+    const pts=[]; eachCoord(reportGeom,c=>{ try{ pts.push(map.project(c)); }catch(e){} });
+    if(pts.length){
+      const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+      const box=[[Math.min(...xs),Math.min(...ys)],[Math.max(...xs),Math.max(...ys)]];
+      try{ feats=map.queryRenderedFeatures(box,{layers:layerIds.map(l=>l.id)}); }catch(e){ feats=[]; }
+    }
+  }
+  const byOverlay=new Map();
+  const seen=new Set();
+  feats.forEach(f=>{
+    if(!pointInGeom(repPoint(f.geometry),reportGeom)) return;
+    const sl=f.layer&&f.layer["source-layer"];
+    const key=(f.id!=null?f.id:"")+"|"+sl+"|"+JSON.stringify(repPoint(f.geometry));
+    if(seen.has(key)) return; seen.add(key);
+    const entry=layerIds.find(l=>l.id===(f.layer&&f.layer.id));
+    const label=entry?entry.ov.label:sl;
+    if(!byOverlay.has(label)) byOverlay.set(label,[]);
+    byOverlay.get(label).push({f,sl});
+  });
+  byOverlay.forEach((items,label)=>{
+    const classes={}; let area=0,len=0,heights=[],floorArea=0;
+    items.forEach(({f,sl})=>{
+      const p=f.properties||{};
+      const main=OVERLAY_MAIN[sl];
+      tally(classes,(main&&p[main])?String(p[main]).replace(/_/g," "):"unclassified");
+      const a=geomAreaM2(f.geometry); area+=a; len+=geomLenM(f.geometry);
+      if(typeof p.height==="number"&&p.height>0){
+        heights.push(p.height);
+        floorArea+=a*Math.max(1,Math.round(p.height/3.5));
+      }
+    });
+    const top=Object.entries(classes).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const rows=[["count",items.length.toLocaleString()]];
+    if(area>0) rows.push(["footprint",`${(area/M2_ACRE).toFixed(2)} acres`]);
+    if(area>0&&totalM2>0) rows.push(["share of area",`${(100*area/totalM2).toFixed(1)}%`]);
+    if(len>0) rows.push(["length",`${(len/M_MILE).toFixed(2)} miles`]);
+    if(heights.length){
+      const hs=[...heights].sort((a,b)=>a-b);
+      const mid=Math.floor(hs.length/2);
+      const medH=hs.length%2?hs[mid]:(hs[mid-1]+hs[mid])/2;
+      rows.push(["median height",`${Math.round(medH)} m`]);
+      rows.push(["tallest",`${Math.round(hs[hs.length-1])} m`]);
+      if(floorArea>0) rows.push(["floor area, approx",`${Math.round(floorArea).toLocaleString()} m² (height / 3.5 m per floor)`]);
+    }
+    secs.push(`<div class="rsec"><div class="rsech">${esc(label)}</div>`
+      +`<dl class="recrows">`+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl>`
+      +`<div class="rbreak">`+top.map(([c,n])=>`<span>${esc(c)} <b>${n}</b></span>`).join("")+`</div></div>`);
+  });
+  // your own analysis layers are exact: filter their real features
+  layers.forEach(L=>{
+    const inside=(L.geojson.features||[]).filter(f=>pointInGeom(repPoint(f.geometry),reportGeom));
+    if(!inside.length) return;
+    const rows=[["features inside",inside.length.toLocaleString()]];
+    if(L.field){
+      const v=inside.map(f=>f.properties[L.field]).filter(x=>typeof x==="number");
+      if(v.length){
+        const st=fieldStats(v);
+        rows.push([`total ${L.field.replace(/_/g," ")}`,fmtNum(L.field,v.reduce((a,b)=>a+b,0))]);
+        rows.push(["median",fmtNum(L.field,st.median)]);
+      }
+    }
+    secs.push(`<div class="rsec"><div class="rsech">${esc(L.name)}</div>`
+      +`<dl class="recrows">`+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl></div>`);
+  });
+  return `<div class="report"><div class="rhead"><b>What is in this area</b>`
+    +`<button class="dx" onclick="clearAreaReport()" aria-label="Close the area breakdown">&times;</button></div>`
+    +`<div class="sub" style="margin:0 0 10px">${(totalM2/M2_ACRE).toFixed(2)} acres drawn.</div>`
+    +(secs.length?secs.join("")
+      :`<div class="sub">Nothing counted here yet. Turn on an overlay such as Buildings or Roads, or run a tool, and the breakdown fills in.</div>`)
+    +`<div class="rnote">Counted from the map tiles currently loaded on screen. Zoom in for a complete count, since features outside the view are not loaded.</div>`
+    +`</div>`;
+}
+window.clearAreaReport=()=>{ reportGeom=null; showTab("layers"); };
+
+// --- measuring what is on the ground -----------------------------------------
+// Spherical area and length, so a breakdown can report real acres and miles
+// rather than degrees. Same formulas turf uses, inlined to avoid a dependency.
+const EARTH_R=6378137, rad=d=>d*Math.PI/180;
+function ringAreaM2(ring){
+  let s=0;
+  for(let i=0,n=ring.length;i<n;i++){
+    const [x1,y1]=ring[i],[x2,y2]=ring[(i+1)%n];
+    s+=(rad(x2)-rad(x1))*(2+Math.sin(rad(y1))+Math.sin(rad(y2)));
+  }
+  return Math.abs(s*EARTH_R*EARTH_R/2);
+}
+function geomAreaM2(g){
+  if(!g) return 0;
+  const poly=r=>r.reduce((a,ring,i)=>a+(i?-1:1)*ringAreaM2(ring),0);
+  if(g.type==="Polygon") return poly(g.coordinates);
+  if(g.type==="MultiPolygon") return g.coordinates.reduce((a,p)=>a+poly(p),0);
+  return 0;
+}
+function segLenM(a,b){
+  const dLat=rad(b[1]-a[1]), dLon=rad(b[0]-a[0]);
+  const h=Math.sin(dLat/2)**2+Math.cos(rad(a[1]))*Math.cos(rad(b[1]))*Math.sin(dLon/2)**2;
+  return 2*EARTH_R*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+function geomLenM(g){
+  if(!g) return 0;
+  const line=c=>c.reduce((a,_,i)=>i?a+segLenM(c[i-1],c[i]):0,0);
+  if(g.type==="LineString") return line(g.coordinates);
+  if(g.type==="MultiLineString") return g.coordinates.reduce((a,c)=>a+line(c),0);
+  return 0;
+}
+function repPoint(g){
+  if(!g) return null;
+  if(g.type==="Point") return g.coordinates;
+  if(g.type==="MultiPoint"||g.type==="LineString") return g.coordinates[Math.floor(g.coordinates.length/2)];
+  if(g.type==="MultiLineString") return g.coordinates[0][0];
+  if(g.type==="Polygon") return g.coordinates[0][0];
+  if(g.type==="MultiPolygon") return g.coordinates[0][0][0];
+  return null;
+}
+function pointInRing(pt,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const [xi,yi]=ring[i],[xj,yj]=ring[j];
+    if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/((yj-yi)||1e-12)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function pointInGeom(pt,g){
+  if(!pt||!g) return false;
+  const inPoly=rings=>rings.some((r,i)=>i===0?pointInRing(pt,r):false)
+                    && !rings.slice(1).some(r=>pointInRing(pt,r));
+  if(g.type==="Polygon") return inPoly(g.coordinates);
+  if(g.type==="MultiPolygon") return g.coordinates.some(inPoly);
+  return false;
+}
+const M2_ACRE=4046.856, M_MILE=1609.344;
+
 // Overture publishes the whole planet as PMTiles archives with CORS and range
 // requests, so a real building, road, water and land-cover overlay costs one
 // script tag and no backend at all. Layer names and zooms below were read out of
@@ -857,11 +1025,52 @@ function firstUserLayerId(){
     return f?f.id:undefined;
   }catch(e){ return undefined; }   // style not ready yet: append instead
 }
+const OVERLAY_MAIN={building:"class",segment:"class",infrastructure:"class",
+  land_use:"class",land_cover:"subtype",water:"class",place:"basic_category",
+  division_boundary:"class",address:"street"};
 function addOverlay(ov){
   const sid="ovsrc-"+ov.theme;
   if(!map.getSource(sid)) map.addSource(sid,{type:"vector",url:PM(ov.theme),attribution:OV_ATTR});
   const before=firstUserLayerId();   // analysis layers stay on top of context
-  ov.layers.forEach(l=>{ if(!map.getLayer(l.id)) map.addLayer({...l,source:sid},before); });
+  ov.layers.forEach(l=>{
+    if(map.getLayer(l.id)) return;
+    map.addLayer({...l,source:sid},before);
+    // Context you cannot interrogate is decoration. Every overlay feature answers.
+    map.on("click",l.id,e=>overlayPopup(e,ov));
+    map.on("mouseenter",l.id,()=>{ if(!drawMode&&!pickTarget) map.getCanvas().style.cursor="pointer"; });
+    map.on("mouseleave",l.id,()=>{ if(!drawMode&&!pickTarget) map.getCanvas().style.cursor=""; });
+  });
+}
+function overlayPopup(e,ov){
+  const f=e.features[0], p=f.properties||{}, sl=f.layer&&f.layer["source-layer"];
+  const main=OVERLAY_MAIN[sl];
+  const name=p["@name"]||p.name;
+  const kind=(main&&p[main])?String(p[main]).replace(/_/g," "):(sl||"").replace(/_/g," ");
+  const bits=[];
+  const push=(k,v,fmt)=>{ if(v!==undefined&&v!==null&&v!=="") bits.push([k,fmt?fmt(v):String(v)]); };
+  push("type",p.subtype&&p.subtype!==p[main]?String(p.subtype).replace(/_/g," "):null);
+  push("height",p.height,v=>`${Math.round(v)} m (about ${Math.max(1,Math.round(v/3.5))} floors)`);
+  push("floors",p.min_floor!==undefined&&p.level!==undefined?`${p.min_floor} to ${p.level}`:null);
+  push("surface",p.road_surface||p.surface,v=>String(v).replace(/_/g," "));
+  push("material",p.facade_material,v=>String(v).replace(/_/g," "));
+  push("category",p.categories&&p.categories.primary);
+  push("brand",p.brand&&p.brand.names&&p.brand.names.primary);
+  if(f.geometry&&(f.geometry.type||"").includes("Polygon")){
+    const a=geomAreaM2(f.geometry);
+    if(a>0) bits.push(["footprint",`${Math.round(a).toLocaleString()} m² (${(a/M2_ACRE).toFixed(2)} acres)`]);
+    if(p.height>0) bits.push(["floor area, approx",`${Math.round(a*Math.max(1,Math.round(p.height/3.5))).toLocaleString()} m²`]);
+  }
+  if(f.geometry&&(f.geometry.type||"").includes("LineString")){
+    const l=geomLenM(f.geometry);
+    if(l>0) bits.push(["length here",`${Math.round(l).toLocaleString()} m`]);
+  }
+  const html=`<div class="rec"><div class="rectop">${esc(ov.label)}</div>`
+    +(name?`<div class="recname">${esc(name)}</div>`:"")
+    +(kind?`<div class="reckind">${esc(kind)}</div>`:"")
+    +(bits.length?`<dl class="recrows">`+bits.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl>`
+      :`<div class="sub" style="margin:6px 0 0">Overture publishes no further detail for this feature.</div>`)
+    +`</div>`;
+  new maplibregl.Popup({maxWidth:"290px",closeButton:true}).setLngLat(e.lngLat).setHTML(html).addTo(map);
 }
 function removeOverlay(ov){
   ov.layers.forEach(l=>{ if(map.getLayer(l.id)) map.removeLayer(l.id); });
