@@ -167,6 +167,24 @@
      visible and clickable so "click on the map to set" actually works. */
   dialog.tool{position:fixed;left:70px;top:54px;margin:0;width:330px;max-width:none;height:calc(100% - 54px);border-radius:0;border-top:none;border-bottom:none;display:flex;flex-direction:column;box-shadow:0 0 44px rgba(0,0,0,.5)}
   dialog.tool .db{overflow-y:auto}
+  #coords{bottom:16px;right:120px;padding:5px 9px;font-family:var(--mono);font-size:11px;color:var(--muted);pointer-events:none}
+  @media (max-width:820px){#coords{display:none}}
+  #tablewrap[hidden]{display:none}
+  #tablewrap{position:absolute;left:0;right:0;bottom:0;z-index:6;max-height:44%;display:flex;flex-direction:column;
+    background:var(--panel);border-top:1px solid var(--line2);box-shadow:0 -14px 34px rgba(0,0,0,.42)}
+  #tablewrap .thead{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px}
+  #tablewrap .thead .tcount{color:var(--muted);font-size:11.5px;flex:1}
+  #tablewrap .thead .btn{height:28px;padding:0 10px;font-size:11.5px}
+  #tablewrap .tscroll{overflow:auto}
+  #tablewrap table{border-collapse:collapse;width:100%;font-size:12px}
+  #tablewrap th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);text-align:left;
+    padding:7px 10px;border-bottom:1px solid var(--line2);cursor:pointer;white-space:nowrap;font-weight:600}
+  #tablewrap th:hover{color:var(--ink)}
+  #tablewrap td{padding:6px 10px;border-bottom:1px solid rgba(35,44,38,.7);white-space:nowrap;
+    max-width:280px;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  #tablewrap tbody tr{cursor:pointer}
+  #tablewrap tbody tr:hover{background:var(--surface)}
+  #tablewrap tbody tr.sel{background:var(--accent-soft)}
   #timebar[hidden]{display:none}
   #timebar{bottom:58px;left:14px;right:auto;display:flex;align-items:center;gap:10px;padding:8px 12px;max-width:min(430px,calc(100% - 28px))}
   #timebar .tlab{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);white-space:nowrap}
@@ -223,6 +241,8 @@
     <div id="basemaps" class="mapctl"><button data-b="dark" class="on">Dark</button><button data-b="street">Street</button><button data-b="satellite">Satellite</button><button data-b="history">History</button></div>
     <div id="draw" class="mapctl"><button data-d="point">Point</button><button data-d="line">Line</button><button data-d="polygon">Area</button><button id="dfin" hidden>Finish</button><button data-d="clear">Clear</button></div>
     <div id="dhint" class="mapctl" role="status" aria-live="polite" hidden></div>
+    <div id="coords" class="mapctl"></div>
+    <div id="tablewrap" hidden></div>
     <div id="timebar" class="mapctl" hidden>
       <label for="tslider" class="tlab">Imagery date</label>
       <input type="range" id="tslider" min="0" max="0" step="1" value="0">
@@ -268,6 +288,11 @@ function init(){
   if(window.pmtiles&&maplibregl.addProtocol) maplibregl.addProtocol("pmtiles",new pmtiles.Protocol().tile);
   map=new maplibregl.Map({container:"map",style:baseStyle("dark"),center:[-73.98,40.672],zoom:13});
   map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),"bottom-right");
+  map.addControl(new maplibregl.ScaleControl({maxWidth:110,unit:"imperial"}),"bottom-left");
+  map.on("mousemove",e=>{
+    const el=$("coords");
+    if(el) el.textContent=`${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`;
+  });
   new ResizeObserver(()=>map.resize()).observe($("mapwrap"));
   map.on("style.load",restyleLayers);
   map.on("click",onMapClick);
@@ -523,6 +548,7 @@ function layersHTML(){
     +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><span class="dot" style="background:${l.color}"></span><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><span class="nm">${esc(l.name)}</span><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
     +`<div class="lctl">`
       +`<input type="range" min="0" max="100" value="${Math.round((l.opacity==null?1:l.opacity)*100)}" oninput="setLayerOpacity(${i},this.value)" aria-label="Opacity of ${esc(l.name)}" title="Opacity">`
+      +`<button type="button" onclick="openTable(${i})" title="Open the attribute table">Table</button>`
       +`<button type="button" onclick="zoomToLayer(${i})" title="Zoom to this layer">Zoom</button>`
       +`<button type="button" onclick="soloLayer(${i})" title="Show only this layer">Only</button>`
       +`<button type="button" onclick="moveLayer(${i},-1)" ${i===0?"disabled":""} title="Move up" aria-label="Move ${esc(l.name)} up">&uarr;</button>`
@@ -791,7 +817,7 @@ window.saveSettings=()=>{ const c={provider:$("prov").value,model:$("model").val
 const HEADLINE=["estimated_total_usd","npv_usd","benefit_cost_ratio","total_usd"];
 function fmtNum(k,v){
   if(typeof v!=="number") return esc(String(v));
-  if(/_usd$|^cost$|budget/.test(k)) return "$"+Math.round(v).toLocaleString();
+  if(/_usd$|^cost$|budget|per_acre$/.test(k)) return "$"+Math.round(v).toLocaleString();
   if(/ratio/.test(k)) return v.toFixed(2);
   if(/years/.test(k)) return `${v} year${v===1?"":"s"}`;
   if(/rate$/.test(k)) return (v*100).toFixed(1)+"%";
@@ -864,6 +890,103 @@ window.copyReport=async()=>{
   }catch(e){
     if(note){ note.hidden=false; note.innerHTML=`<textarea class="field" readonly style="min-height:150px">${esc(md)}</textarea>`; }
   }
+};
+
+// Anyone arriving from ArcGIS or QGIS looks for the attribute table first: a
+// sortable grid docked under the map, where clicking a row selects the feature
+// and zooms to it. Same muscle memory, no jargon.
+let tableLayer=null, tableSort={col:null,dir:1}, tableSel=null;
+function featureRows(L){ return (L.geojson.features||[]); }
+function tableColumns(L){
+  const seen=[];
+  featureRows(L).slice(0,200).forEach(f=>Object.keys(f.properties||{}).forEach(k=>{
+    if(!seen.includes(k)) seen.push(k);
+  }));
+  return seen;
+}
+window.openTable=i=>{
+  tableLayer=layers[i]||null; tableSort={col:null,dir:1}; tableSel=null;
+  renderTable();
+};
+window.closeTable=()=>{ tableLayer=null; clearTableSelection(); $("tablewrap").hidden=true; };
+window.sortTable=col=>{
+  tableSort = tableSort.col===col ? {col,dir:-tableSort.dir} : {col,dir:1};
+  renderTable();
+};
+function sortedRows(L){
+  const rows=featureRows(L).map((f,n)=>({f,n}));
+  const c=tableSort.col;
+  if(!c) return rows;
+  return rows.sort((a,b)=>{
+    const x=(a.f.properties||{})[c], y=(b.f.properties||{})[c];
+    if(x==null&&y==null) return 0;
+    if(x==null) return 1;
+    if(y==null) return -1;
+    if(typeof x==="number"&&typeof y==="number") return (x-y)*tableSort.dir;
+    return String(x).localeCompare(String(y))*tableSort.dir;
+  });
+}
+function renderTable(){
+  const wrap=$("tablewrap");
+  if(!tableLayer){ wrap.hidden=true; return; }
+  const L=tableLayer, cols=tableColumns(L), rows=sortedRows(L);
+  const shown=rows.slice(0,500);
+  wrap.hidden=false;
+  wrap.innerHTML=
+    `<div class="thead"><b>${esc(L.name)}</b>`
+    +`<span class="tcount">${featureRows(L).length} feature${featureRows(L).length===1?"":"s"}`
+    +`${shown.length<rows.length?`, showing first ${shown.length}`:""}</span>`
+    +`<button class="btn" onclick="exportTableCsv()">Export CSV</button>`
+    +`<button class="dx" onclick="closeTable()" aria-label="Close the attribute table">&times;</button></div>`
+    +`<div class="tscroll"><table><thead><tr>`
+    +cols.map(c=>`<th onclick="sortTable('${esc(c)}')" title="Sort by ${esc(c)}">${esc(c)}`
+        +`${tableSort.col===c?(tableSort.dir>0?" \u2191":" \u2193"):""}</th>`).join("")
+    +`</tr></thead><tbody>`
+    +(shown.length?shown.map(r=>
+        `<tr onclick="selectRow(${r.n})" class="${tableSel===r.n?"sel":""}">`
+        +cols.map(c=>{
+            const v=(r.f.properties||{})[c];
+            return `<td>${v==null?"":esc(typeof v==="number"?fmtNum(c,v):String(v))}</td>`;
+          }).join("")+`</tr>`).join("")
+      :`<tr><td colspan="${Math.max(cols.length,1)}">This layer has no attributes.</td></tr>`)
+    +`</tbody></table></div>`;
+}
+function clearTableSelection(){
+  tableSel=null;
+  const src=map.getSource("tblsel");
+  if(src) src.setData({type:"FeatureCollection",features:[]});
+}
+window.selectRow=n=>{
+  if(!tableLayer) return;
+  tableSel=n;
+  const f=featureRows(tableLayer)[n];
+  if(!f) return;
+  ensureSelectionLayers();
+  const src=map.getSource("tblsel");
+  if(src) src.setData({type:"FeatureCollection",features:[f]});
+  fitTo({type:"FeatureCollection",features:[f]});
+  renderTable();
+};
+function ensureSelectionLayers(){
+  if(map.getSource("tblsel")) return;
+  map.addSource("tblsel",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+  map.addLayer({id:"tblsel-line",source:"tblsel",type:"line",
+    paint:{"line-color":"#ffd479","line-width":3}});
+  map.addLayer({id:"tblsel-pt",source:"tblsel",type:"circle",filter:["==","$type","Point"],
+    paint:{"circle-radius":8,"circle-color":"rgba(255,212,121,.35)",
+           "circle-stroke-width":2.5,"circle-stroke-color":"#ffd479"}});
+}
+window.exportTableCsv=()=>{
+  if(!tableLayer) return;
+  const cols=tableColumns(tableLayer);
+  const esc2=v=>{ const t=v==null?"":String(v); return /[",\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t; };
+  const csv=[cols.join(",")].concat(
+    sortedRows(tableLayer).map(r=>cols.map(c=>esc2((r.f.properties||{})[c])).join(","))).join("\n");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  const a=document.createElement("a");
+  a.href=url; a.download=(tableLayer.name||"table").replace(/[^a-z0-9]+/gi,"_").toLowerCase()+".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
 };
 
 // Results have to be able to leave. GeoJSON opens directly in ArcGIS and QGIS,
