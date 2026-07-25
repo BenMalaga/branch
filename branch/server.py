@@ -115,7 +115,8 @@ def prepare():
 def list_tools():
     """The tool registry: what a human can click and the agent can call."""
     return jsonify([{"id": t.id, "title": t.title, "description": t.description,
-                     "category": t.category, "returns": t.returns, "params": t.params}
+                     "category": t.category, "returns": t.returns, "params": t.params,
+                     "noun": t.noun or t.title}
                     for t in registry.all_tools()])
 
 

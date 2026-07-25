@@ -27,6 +27,7 @@ class Tool:
     params: dict             # JSON Schema of the inputs
     run: Callable            # (params: dict) -> {"result":..., "recipe":...}
     returns: str = "layer"   # layer | table | value
+    noun: str = ""           # short name for the layer this makes
     category: str = "shaping layers"  # groups tools in the UI, in plain English
 
 
@@ -141,7 +142,7 @@ def _run_buffer(params: dict) -> dict:
 
 
 register(Tool(
-    id="buffer", title="Everything within a distance", category="shaping layers", returns="layer",
+    id="buffer", title="Everything within a distance", noun="Buffer zone", category="shaping layers", returns="layer",
     description="Draws a zone of a set distance in meters around everything in a "
                 "layer. Use it for questions like within 400 meters of a park, or for "
                 "a setback. Also called a buffer.",
@@ -163,7 +164,7 @@ def _run_spatial_join(params: dict) -> dict:
 
 
 register(Tool(
-    id="spatial_join", title="Combine two layers", category="shaping layers", returns="layer",
+    id="spatial_join", title="Combine two layers", noun="Joined layers", category="shaping layers", returns="layer",
     description="Attaches the information from one layer onto another wherever they "
                 "overlap, for example tagging each point with the neighborhood it "
                 "falls in. Also called a spatial join.",
@@ -193,7 +194,7 @@ def _run_clip(params: dict) -> dict:
 
 
 register(Tool(
-    id="clip", title="Trim to an area", category="shaping layers", returns="layer",
+    id="clip", title="Trim to an area", noun="Clipped", category="shaping layers", returns="layer",
     description="Keeps only the part of a layer that falls inside a boundary, such as "
                 "an area you drew on the map. Use it to focus an analysis on one "
                 "block, corridor, or study area. Also called a clip, or intersect.",
@@ -217,7 +218,7 @@ def _run_osm(params: dict) -> dict:
 
 
 register(Tool(
-    id="osm", title="Get map data for this view", category="map data", returns="layer",
+    id="osm", title="Get map data for this view", noun="Map data", category="map data", returns="layer",
     description="Pulls real features (parks, schools, shops, restaurants, transit "
                 "stops, roads) straight from OpenStreetMap for wherever the map is "
                 "pointed. Free, and no key needed. Also called an OSM or Overpass "
@@ -251,7 +252,7 @@ def _run_coolwalk(params: dict) -> dict:
 
 
 register(Tool(
-    id="coolwalk", title="Find the shadiest walk", category="getting around", returns="layer",
+    id="coolwalk", title="Find the shadiest walk", noun="Shady route", category="getting around", returns="layer",
     description="Compares the fastest walking route with the most tree-shaded one "
                 "between two points at a given time of day, so you can see what shade "
                 "costs in extra minutes. New York only, because it uses the city "
@@ -304,7 +305,7 @@ def _run_cost(params: dict) -> dict:
 
 
 register(Tool(
-    id="cost_estimate", title="What will this cost to build?", category="money", returns="value",
+    id="cost_estimate", title="What will this cost to build?", noun="Cost estimate", category="money", returns="value",
     description="Budget for building something: trees, sidewalk, bike lane, water "
                 "main, sewer, underground electric, a bench, a streetlight, or "
                 "repaving. Give it a layer of what you plan to build and it prices "
@@ -340,7 +341,7 @@ def _run_value_per_acre(params: dict) -> dict:
 
 
 register(Tool(
-    id="value_per_acre", title="Which land pays for itself?",
+    id="value_per_acre", title="Which land pays for itself?", noun="Value per acre",
     category="money", returns="layer",
     description="Ranks parcels by how much taxable value each acre carries, the "
                 "number that shows which blocks fund the city and which are "
@@ -370,7 +371,7 @@ def _run_benefit_cost(params: dict) -> dict:
 
 
 register(Tool(
-    id="benefit_cost", title="Is it worth it?", category="money", returns="value",
+    id="benefit_cost", title="Is it worth it?", noun="Benefit and cost", category="money", returns="value",
     description="Weighs an upfront cost against a yearly benefit over time and "
                 "returns the net present value, the benefit-to-cost ratio, and the "
                 "year it pays itself back. Also called benefit-cost analysis, or ROI.",
@@ -419,7 +420,7 @@ def _run_walkshed(params: dict) -> dict:
 
 
 register(Tool(
-    id="walkshed", title="What is within a short walk?", category="getting around", returns="layer",
+    id="walkshed", title="What is within a short walk?", noun="Walkshed", category="getting around", returns="layer",
     description="Shows everywhere a person can actually reach on foot in a set number "
                 "of minutes, following real streets instead of drawing a circle. Use "
                 "it for 15-minute-city access, catchment areas, or what a site can "
@@ -450,7 +451,7 @@ def _run_clearance(params: dict) -> dict:
 
 
 register(Tool(
-    id="clearance_check", title="What is too close to utility lines?", category="safety", returns="layer",
+    id="clearance_check", title="What is too close to utility lines?", noun="Clearance check", category="safety", returns="layer",
     description="Flags anything you plan to put in the ground that sits within a safe "
                 "distance of water, sewer, gas, or electric lines, so conflicts show "
                 "up before design does. Also called a clearance or setback check.",
@@ -482,7 +483,7 @@ def _run_density(params: dict) -> dict:
 
 
 register(Tool(
-    id="density_hexbin", title="Where is it most concentrated?", category="shaping layers", returns="layer",
+    id="density_hexbin", title="Where is it most concentrated?", noun="Density", category="shaping layers", returns="layer",
     description="Groups points into hexagons and colors them by how many fall in "
                 "each, so clusters and empty gaps are obvious at a glance. Also "
                 "called a density hexbin, or H3 aggregation.",
