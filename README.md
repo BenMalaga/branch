@@ -22,12 +22,12 @@ and a function the optional assistant can call.
 
 | Category | Tools |
 |---|---|
-| Planning | CoolWalk shade routing, walkshed (15-minute-city isochrone), utility clearance check |
-| Fiscal | cost estimate, value per acre, benefit-cost / ROI |
-| Geoprocessing | buffer, spatial join, clip to an area, filter by attribute, density hotspots |
-| Statistics | hot and cold spot analysis (Getis-Ord Gi\*) with a false-discovery correction, so a cluster is tested rather than just coloured |
-| Data | OpenStreetMap features, real jurisdiction borders (county, city, borough, neighborhood), dated historical satellite imagery (2014 to now) |
-| Overlays | Buildings in 3D, roads, water, green cover, land use, infrastructure, boundaries, addresses and places, streamed worldwide from Overture Maps |
+| Money | what will this cost to build, which land pays for itself (value per acre), is it worth it (payback and ROI) |
+| Getting around | what is within a short walk (walkshed), find the shadiest walk |
+| Safety | what is too close to utility lines |
+| Map data | OpenStreetMap features, real jurisdiction borders (county, city, borough, neighborhood) |
+| Shaping layers | everything within a distance, trim to an area, combine two layers, keep only what matches, where is it most concentrated, is this cluster real (Getis-Ord Gi\* with a false-discovery correction) |
+| Overlays | buildings in 3D, roads, water, green cover, land use, infrastructure, boundaries, addresses and places, streamed worldwide from Overture Maps, plus dated historical satellite imagery back to 2014 |
 
 Each tool reprojects to the metric coordinate system local to the ground it is
 measuring (its own UTM zone, so a length is a length anywhere on earth),
@@ -62,18 +62,19 @@ branch serve
 That serves the same app at `http://localhost:8000`. A `Dockerfile` and a
 `render.yaml` are included if you would rather deploy it somewhere.
 
-Every figure in an assistant answer is traced back to the tool run that produced
-it, by plain arithmetic rather than a second model. Anything that matches no tool
-output is flagged in the answer itself, so a number nobody computed cannot pass
-quietly. The check needs no API key, so it holds for a small local model too.
-
 ## The assistant is optional
 
-The "Ask the map" bar calls the same tools listed above. Bring your own model
-key (Anthropic or OpenAI), kept only in your browser and never stored. Without a
-key every tool still works as a button, so the assistant is a convenience, not a
-gate. Ollama is supported when you run branch on your own machine, where branch
-can reach it.
+The "Ask the map" bar is a conversation that calls the same tools listed above,
+chains them, and keeps context between turns. You can drop a GeoJSON or CSV
+straight into the chat. Bring your own model key (Anthropic or OpenAI), kept only
+in your browser and never stored. Without a key every tool still works as a
+button, so the assistant is a convenience, not a gate. Ollama is supported when
+you run branch on your own machine, where branch can reach it.
+
+Every figure in an answer is traced back to the tool run that produced it, by
+plain arithmetic rather than a second model. Anything matching no tool output is
+flagged in the answer itself, so a number nobody computed cannot pass quietly.
+The check needs no API key, so it holds for a small local model too.
 
 ## Use it beside ArcGIS
 
