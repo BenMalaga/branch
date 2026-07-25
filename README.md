@@ -24,7 +24,7 @@ and a function the optional assistant can call.
 |---|---|
 | Planning | CoolWalk shade routing, walkshed (15-minute-city isochrone), utility clearance check |
 | Fiscal | cost estimate, value per acre, benefit-cost / ROI |
-| Geoprocessing | buffer, spatial join, density hotspots |
+| Geoprocessing | buffer, spatial join, clip to an area, density hotspots |
 | Data | OpenStreetMap features |
 
 Each tool reprojects to a metric coordinate system, validates geometry, and

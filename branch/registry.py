@@ -111,6 +111,35 @@ register(Tool(
     run=_run_spatial_join))
 
 
+def _run_clip(params: dict) -> dict:
+    """Keep only the parts of a layer that fall inside a boundary.
+
+    The boundary is usually an area drawn on the map, so this is what turns a
+    hand-drawn study area into a real filter: draw the block you care about,
+    then trim parcels, trees or streets down to it before costing anything.
+    """
+    gdf = _read_fc(params["layer"])
+    boundary = _read_fc(params["boundary"]).to_crs(gdf.crs)
+    mask = (boundary.union_all() if hasattr(boundary, "union_all")
+            else boundary.unary_union)
+    clipped = gdf.clip(mask)
+    return {"result": _fc(clipped),
+            "recipe": {"tool": "clip", "kept": int(len(clipped)),
+                       "of": int(len(gdf))}}
+
+
+register(Tool(
+    id="clip", title="Clip to an area", category="geoprocessing", returns="layer",
+    description="Trim a layer down to what falls inside a boundary, such as an "
+                "area you drew on the map or a district polygon. Use it to scope "
+                "an analysis to one block, corridor, or study area.",
+    params={"type": "object", "required": ["layer", "boundary"], "properties": {
+        "layer": {"type": "object", "description": "the layer to trim (FeatureCollection)"},
+        "boundary": {"type": "object",
+                     "description": "polygon layer to keep inside, e.g. a drawn area"}}},
+    run=_run_clip))
+
+
 # --- connectors (free public data) -------------------------------------------
 def _run_osm(params: dict) -> dict:
     import osmnx as ox
