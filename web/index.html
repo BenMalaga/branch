@@ -21,6 +21,7 @@
 <meta name="twitter:image" content="https://planwithbranch.com/og.png">
 <meta name="theme-color" content="#0e1311">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/pmtiles@3.0.6/dist/pmtiles.js"></script>
 <style>
   :root{
     --bg:#0e1311;--panel:#121814;--header:#0f1412;--rail:#0d1210;--line:#232c26;--line2:#2d3730;
@@ -136,6 +137,10 @@
   #search input{flex:1;height:40px;padding:0 12px;background:none;border:none;color:var(--ink);font-size:13px;font-family:var(--ui)}
   #search input:focus{outline:none}
   #search:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+  #overlays{top:58px;right:14px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;padding:6px;max-width:min(330px,calc(100% - 28px))}
+  #overlays button{padding:5px 10px;font-size:11.5px;color:var(--muted);background:none;border:1px solid transparent;border-radius:8px;white-space:nowrap}
+  #overlays button:hover{color:var(--ink);border-color:var(--line2)}
+  #overlays button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
   #basemaps{top:14px;right:14px;display:flex;overflow:hidden;padding:3px}
   #basemaps button{padding:6px 12px;font-size:11.5px;color:var(--muted);background:none;border:none;border-radius:8px}
   #basemaps button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
@@ -182,6 +187,7 @@
   @media (max-width:820px){body{overflow:auto}#app{flex-direction:column;height:auto}#rail{flex-direction:row;width:100%;height:auto}#rail .rb{height:54px;flex:1}#rail .rb.on::before{left:12px;right:12px;top:auto;bottom:0;width:auto;height:2.5px}#panel{width:100%}#mapwrap{height:56vh;min-height:360px}.tag{display:none}
     #search{left:14px;right:14px;width:auto;max-width:none}
     #basemaps{top:66px;right:14px}
+    #overlays{top:110px;right:14px;left:14px;max-width:none}
     #draw{bottom:14px;left:14px}}
 </style>
 </head>
@@ -208,6 +214,7 @@
   <div id="mapwrap">
     <div id="map"></div>
     <div id="search" class="mapctl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="q" placeholder="Search an address or place..." autocomplete="off"></div>
+    <div id="overlays" class="mapctl" aria-label="Map overlays"></div>
     <div id="basemaps" class="mapctl"><button data-b="dark" class="on">Dark</button><button data-b="street">Street</button><button data-b="satellite">Satellite</button><button data-b="history">History</button></div>
     <div id="draw" class="mapctl"><button data-d="point">Point</button><button data-d="line">Line</button><button data-d="polygon">Area</button><button id="dfin" hidden>Finish</button><button data-d="clear">Clear</button></div>
     <div id="dhint" class="mapctl" role="status" aria-live="polite" hidden></div>
@@ -253,13 +260,14 @@ const BASEMAPS={
 function baseStyle(b){return {version:8,sources:{base:{type:"raster",tiles:BASEMAPS[b].tiles,tileSize:256,attribution:BASEMAPS[b].attr}},layers:[{id:"base",type:"raster",source:"base"}]};}
 
 function init(){
+  if(window.pmtiles&&maplibregl.addProtocol) maplibregl.addProtocol("pmtiles",new pmtiles.Protocol().tile);
   map=new maplibregl.Map({container:"map",style:baseStyle("dark"),center:[-73.98,40.672],zoom:13});
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),"bottom-right");
   new ResizeObserver(()=>map.resize()).observe($("mapwrap"));
   map.on("style.load",restyleLayers);
   map.on("click",onMapClick);
   map.doubleClickZoom.disable();
-  wireTabs(); wireBasemaps(); wireDraw(); wireSearch(); wireSettings();
+  wireTabs(); wireBasemaps(); wireDraw(); wireSearch(); wireSettings(); renderOverlayBar();
   loadTools().then(()=>{ if(getTab()==="tools")showTab("tools"); });
   showTab("ask");
   const shared=(location.hash.match(/[#&]s=([^&]+)/)||[])[1];
@@ -301,7 +309,7 @@ function drawLayer(L){
   map.addLayer({id:L.id+"-pt",source:L.id,type:"circle",filter:["==","$type","Point"],paint:{"circle-radius":field?6:5,"circle-color":col,"circle-stroke-width":1.2,"circle-stroke-color":BG}});
   ["-fill","-line","-pt"].forEach(s=>map.on("click",L.id+s,popup));
 }
-function restyleLayers(){ layers.forEach(L=>{ drawLayer(L); setVis(L); }); addDrawPreviewLayers(); drawPreview();
+function restyleLayers(){ restoreOverlays(); layers.forEach(L=>{ drawLayer(L); setVis(L); }); addDrawPreviewLayers(); drawPreview();
   if(curBasemap==="history"&&waybackIdx!=null) applyRelease(waybackIdx); }
 function setVis(L){ ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s)) map.setLayoutProperty(L.id+s,"visibility",L.visible?"visible":"none"); }); }
 function removeLayer(L){ ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s))map.removeLayer(L.id+s); }); if(map.getSource(L.id))map.removeSource(L.id); layers=layers.filter(x=>x!==L); showTab("layers"); }
@@ -589,6 +597,87 @@ function finishDraw(e){
 }
 
 // ---------- basemaps / search / settings ----------
+// Overture publishes the whole planet as PMTiles archives with CORS and range
+// requests, so a real building, road, water and land-cover overlay costs one
+// script tag and no backend at all. Layer names and zooms below were read out of
+// each archive's own metadata, not guessed.
+const OVERTURE_REL="2026-07-22.0";
+const PM=t=>`pmtiles://https://tiles.overturemaps.org/${OVERTURE_REL}/${t}.pmtiles`;
+const OV_ATTR="&copy; Overture Maps Foundation (ODbL)";
+const OVERLAYS=[
+  {id:"buildings",label:"Buildings",theme:"buildings",layers:[
+    {id:"ov-buildings",type:"fill-extrusion","source-layer":"building",minzoom:13,
+     paint:{"fill-extrusion-color":"#43574c","fill-extrusion-opacity":.85,
+            "fill-extrusion-base":0,
+            "fill-extrusion-height":["coalesce",["get","height"],6]}},
+    {id:"ov-buildings-flat",type:"fill","source-layer":"building",maxzoom:13,
+     paint:{"fill-color":"#33453b","fill-outline-color":"#4a5f53"}}]},
+  {id:"roads",label:"Roads",theme:"transportation",layers:[
+    {id:"ov-roads",type:"line","source-layer":"segment",
+     paint:{"line-color":["match",["get","class"],
+              "motorway","#e6c07b","trunk","#e6c07b","primary","#d3ab68",
+              "footway","#8ed3a6","path","#8ed3a6","sidewalk","#8ed3a6","#78867d"],
+            "line-width":["interpolate",["linear"],["zoom"],10,.4,14,1.6,18,4]}}]},
+  {id:"water",label:"Water",theme:"base",layers:[
+    {id:"ov-water",type:"fill","source-layer":"water",
+     paint:{"fill-color":"#1e3b52","fill-opacity":.8}}]},
+  {id:"green",label:"Green cover",theme:"base",layers:[
+    {id:"ov-green",type:"fill","source-layer":"land_cover",
+     paint:{"fill-color":"#2d5c3e","fill-opacity":.45}}]},
+  {id:"landuse",label:"Land use",theme:"base",layers:[
+    {id:"ov-landuse",type:"fill","source-layer":"land_use",
+     paint:{"fill-color":"#3a4d2f","fill-opacity":.42}}]},
+  {id:"infra",label:"Infrastructure",theme:"base",layers:[
+    {id:"ov-infra",type:"circle","source-layer":"infrastructure",minzoom:12,
+     paint:{"circle-radius":3.4,"circle-color":"#e88a6a",
+            "circle-stroke-width":1,"circle-stroke-color":BG}}]},
+  {id:"places",label:"Places",theme:"places",layers:[
+    {id:"ov-places",type:"circle","source-layer":"place",minzoom:13,
+     paint:{"circle-radius":3,"circle-color":"#6fa8e8",
+            "circle-stroke-width":1,"circle-stroke-color":BG}}]},
+];
+const activeOverlays=new Set();
+function firstUserLayerId(){
+  try{
+    const ls=(map.getStyle()||{}).layers||[];
+    const f=ls.find(l=>String(l.id).startsWith("ly")||String(l.id).startsWith("drawprev"));
+    return f?f.id:undefined;
+  }catch(e){ return undefined; }   // style not ready yet: append instead
+}
+function addOverlay(ov){
+  const sid="ovsrc-"+ov.theme;
+  if(!map.getSource(sid)) map.addSource(sid,{type:"vector",url:PM(ov.theme),attribution:OV_ATTR});
+  const before=firstUserLayerId();   // analysis layers stay on top of context
+  ov.layers.forEach(l=>{ if(!map.getLayer(l.id)) map.addLayer({...l,source:sid},before); });
+}
+function removeOverlay(ov){
+  ov.layers.forEach(l=>{ if(map.getLayer(l.id)) map.removeLayer(l.id); });
+}
+window.toggleOverlay=id=>{
+  const ov=OVERLAYS.find(o=>o.id===id); if(!ov) return;
+  if(activeOverlays.has(id)){ activeOverlays.delete(id); removeOverlay(ov); }
+  else{
+    try{ addOverlay(ov); activeOverlays.add(id); }
+    catch(e){
+      // Failing quietly would look like a dead button, so say what happened.
+      activeOverlays.delete(id);
+      const h=$("dhint");
+      if(h){ h.hidden=false; h.textContent=`Could not load the ${ov.label} overlay. It streams from Overture Maps, so a blocked or offline connection will stop it.`; }
+    }
+  }
+  renderOverlayBar();
+};
+function renderOverlayBar(){
+  const el=$("overlays"); if(!el) return;
+  el.innerHTML=OVERLAYS.map(o=>
+    `<button type="button" data-ov="${o.id}" aria-pressed="${activeOverlays.has(o.id)}" class="${activeOverlays.has(o.id)?"on":""}">${esc(o.label)}</button>`
+  ).join("");
+  el.querySelectorAll("[data-ov]").forEach(btn=>btn.onclick=()=>toggleOverlay(btn.dataset.ov));
+}
+function restoreOverlays(){
+  OVERLAYS.filter(o=>activeOverlays.has(o.id)).forEach(o=>{ try{ addOverlay(o); }catch(e){} });
+}
+
 // Esri's Wayback publishes ~195 dated snapshots of world imagery as plain tiles,
 // free and key-free, so "what did this block look like in 2016" costs one tile swap
 // and no backend at all.
