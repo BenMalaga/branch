@@ -157,6 +157,7 @@
      visible and clickable so "click on the map to set" actually works. */
   dialog.tool{position:fixed;left:70px;top:54px;margin:0;width:330px;max-width:none;height:calc(100% - 54px);border-radius:0;border-top:none;border-bottom:none;display:flex;flex-direction:column;box-shadow:0 0 44px rgba(0,0,0,.5)}
   dialog.tool .db{overflow-y:auto}
+  #timebar[hidden]{display:none}
   #timebar{bottom:58px;left:14px;right:auto;display:flex;align-items:center;gap:10px;padding:8px 12px;max-width:min(430px,calc(100% - 28px))}
   #timebar .tlab{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);white-space:nowrap}
   #timebar input[type=range]{flex:1;min-width:120px;accent-color:var(--accent);height:20px}
@@ -387,10 +388,15 @@ async function ask(){
 async function loadTools(){ try{ tools=await(await fetch("/api/tools")).json(); }catch(e){ tools=[]; } }
 function toolsHTML(){
   const cats={}; tools.forEach(t=>(cats[t.category]=cats[t.category]||[]).push(t));
-  const order=["planning","fiscal","geoprocessing","connector"];
-  let h=`<h3>Tools</h3><p class="sub">Run a verified analysis. Every result becomes a layer you can inspect and reuse.</p>`;
-  order.filter(c=>cats[c]).forEach(c=>{
-    h+=`<div class="cat">${c==="fiscal"?"fiscal (money)":c}</div>`;
+  // Preferred order first, then anything else that exists. A category this list
+  // has never heard of must still show up, or renaming one silently empties the panel.
+  const PREFERRED=["money","getting around","map data","shaping layers","safety"];
+  const order=[...PREFERRED.filter(c=>cats[c]),
+               ...Object.keys(cats).filter(c=>!PREFERRED.includes(c))];
+  let h=`<h3>Tools</h3><p class="sub">Pick a question. Every answer becomes a layer you can inspect, reuse, and download.</p>`;
+  if(!tools.length) h+=`<div class="empty">Could not load the tools. Reload the page, or check that the server is running.</div>`;
+  order.forEach(c=>{
+    h+=`<div class="cat">${esc(c)}</div>`;
     cats[c].forEach(t=>h+=`<div class="tool" onclick='openTool("${t.id}")'><span class="badge">${t.returns}</span><div class="tt">${esc(t.title)}</div><div class="td">${esc(t.description)}</div></div>`);
   });
   return h;
