@@ -18,7 +18,7 @@ import os
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
-from . import agent, config, data, geoutil, registry, shade, solar
+from . import agent, config, data, geoutil, registry, shade, solar, sources
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
@@ -212,6 +212,11 @@ def run_tool(tool_id):
         return jsonify({"error": str(e)}), 400
     try:
         return jsonify(tool.run(params))
+    except (ValueError, sources.CoverageError) as e:
+        # A tool raises ValueError to say something a person needs to read, so
+        # pass the sentence through. Prefixing it with the class name turns
+        # advice into a stack trace.
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
         return jsonify({"error": f"{type(e).__name__}: {e}"}), 400
 

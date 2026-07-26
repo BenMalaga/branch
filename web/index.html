@@ -1046,13 +1046,48 @@ async function runTool(t){
       const L=addLayer(t.noun||t.title,res,{fit:true,src:{t:t.id,p:prov}});
       openCard(t.noun||t.title,
         `<div class="sec"><div class="kvbig"><span>features</span><b>${(res.features||[]).length.toLocaleString()}</b></div>`
-        +recipeHTML(d.recipe)+`</div>`);
+        +listHTML(d.recipe)+recipeHTML(d.recipe)+`</div>`);
+      wireList(d.recipe);
       tab="layers"; renderPanel();
     } else {
       openCard(t.noun||t.title,valueHTML(res,d.recipe));
     }
   }catch(e){ openCard("Could not run that",`<div class="sec">${esc(e.message)}</div>`); }
   finally{ busy(false); }
+}
+function listHTML(r){
+  const rows=r&&r.notice_list;
+  if(!Array.isArray(rows)||!rows.length) return "";
+  const named=rows.filter(x=>x.owner&&x.owner!=="nan"&&x.owner!=="None").length;
+  return `<div class="sech" style="margin-top:14px">Who has to be notified</div>`
+    +`<div class="sub">${rows.length} propert${rows.length===1?"y":"ies"} within `
+    +`${r.distance_ft} feet, nearest first`
+    +(named<rows.length?`. ${rows.length-named} have no owner recorded.`:".")+`</div>`
+    +`<table class="grid" style="margin-top:8px"><thead><tr><th>owner</th>`
+    +`<th>address</th><th>feet</th></tr></thead><tbody>`
+    +rows.slice(0,300).map(x=>`<tr><td>${esc(x.owner&&x.owner!=="nan"?x.owner:"not recorded")}</td>`
+      +`<td>${esc(x.address&&x.address!=="nan"?x.address:"")}</td>`
+      +`<td>${x.distance_ft}</td></tr>`).join("")
+    +`</tbody></table>`
+    +(r.note?`<p class="sub" style="margin-top:10px">${esc(r.note)}</p>`:"")
+    +`<button class="btn wide" id="noticeCsv" style="margin-top:10px">Download the list as a spreadsheet</button>`;
+}
+function wireList(r){
+  const btn=$("noticeCsv"); if(!btn) return;
+  btn.onclick=()=>{
+    const rows=r.notice_list||[];
+    const cell=v=>{ const t=v==null?"":String(v); return /[",\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t; };
+    const csv=["owner,mailing address,distance in feet"]
+      .concat(rows.map(x=>[x.owner&&x.owner!=="nan"?x.owner:"",
+                           x.address&&x.address!=="nan"?x.address:"",
+                           x.distance_ft].map(cell).join(",")))
+      .join("\n");
+    const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+    const a=document.createElement("a");
+    a.href=url; a.download=`notice_list_${r.distance_ft}ft.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  };
 }
 function recipeHTML(r){
   if(!r) return "";

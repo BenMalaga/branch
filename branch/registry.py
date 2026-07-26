@@ -1071,3 +1071,151 @@ register(Tool(
                                  "for example LANDUSE = 'VACANT'"},
         "limit": {"type": "integer", "default": 2000, "minimum": 1, "maximum": 6000}}},
     run=_run_arcgis))
+
+
+# The abutter list. Every US zoning hearing needs one: the statute says notify
+# everyone whose property lies within N feet of the subject property, and today
+# that is produced by hand from a paper map or bought from a title company.
+# Three things make it right or wrong, and none of them are visible in the output:
+# the distance must be measured in meters on the ground rather than in degrees,
+# it must run from the property LINE and not the centroid, and the subject
+# parcel must not appear in its own notice list.
+FEET_PER_M = 3.280839895
+
+# Column names assessors actually use. Matched case-insensitively, in order.
+OWNER_HINTS = ["owner", "own_name", "ownername", "owner_name", "owner1",
+               "deed_owner", "taxpayer", "prop_owner", "grantee"]
+ADDR_HINTS = ["mail_addr", "mailing", "mail_add", "owner_addr", "own_addr",
+              "address", "situs", "prop_addr", "location", "street"]
+
+
+def _pick_field(columns, hints):
+    """The first column whose name looks like what we are after, or None.
+
+    Returns None rather than a guess when nothing matches. A notice list sent to
+    the wrong column is a hearing that gets challenged.
+    """
+    lower = {str(c).lower(): c for c in columns}
+    for hint in hints:
+        for low, actual in lower.items():
+            if low == hint:
+                return actual
+    for hint in hints:
+        for low, actual in lower.items():
+            if hint in low:
+                return actual
+    return None
+
+
+def _run_notice_list(params: dict) -> dict:
+    import pandas as pd
+
+    parcels = _read_fc(params["parcels"])
+    subject = _read_fc(params["subject"])
+    if parcels.empty:
+        raise ValueError("The parcel layer is empty, so there is nobody to notify.")
+    if subject.empty:
+        raise ValueError("No subject property was given. Draw or select the parcel "
+                         "the application is about.")
+
+    feet = float(params.get("distance_ft", 200))
+    if feet <= 0:
+        raise ValueError("The notice radius has to be a positive distance in feet.")
+    metres = feet / FEET_PER_M
+
+    # Measure on the ground. Buffering in degrees is the bug that reported a
+    # Los Angeles area 47.6% too large, and here it would silently widen or
+    # narrow a legally defined radius.
+    crs = parcels.estimate_utm_crs()
+    p_m = parcels.to_crs(crs)
+    s_m = subject.to_crs(crs)
+
+    # From the property line, not the centroid. A statute says "within 200 feet
+    # of the property", and on a deep lot those differ by more than the radius.
+    ring = s_m.geometry.union_all().buffer(metres)
+
+    hit = p_m[p_m.geometry.intersects(ring)].copy()
+    if hit.empty:
+        raise ValueError(
+            f"No parcels fall within {feet:g} feet of the subject property. Check "
+            f"that the parcel layer covers this area and that the subject is in "
+            f"the right place.")
+
+    # The applicant is not an abutter of their own application.
+    own = s_m.geometry.union_all()
+    is_subject = hit.geometry.apply(
+        lambda g: g.intersection(own).area > 0.5 * g.area if g.area else False)
+    excluded = int(is_subject.sum())
+    hit = hit[~is_subject]
+    if hit.empty:
+        raise ValueError(f"Within {feet:g} feet there is only the subject property "
+                         f"itself, so there is nobody to notify.")
+
+    owner_col = params.get("owner_field") or _pick_field(hit.columns, OWNER_HINTS)
+    addr_col = params.get("address_field") or _pick_field(hit.columns, ADDR_HINTS)
+    for name, col in (("owner_field", owner_col), ("address_field", addr_col)):
+        if col is not None and col not in hit.columns:
+            raise ValueError(f"There is no column called {col!r} in the parcel "
+                             f"layer. Its columns are: "
+                             f"{', '.join(map(str, list(hit.columns)[:25]))}.")
+
+    hit["distance_ft"] = (hit.geometry.distance(own) * FEET_PER_M).round(1)
+    hit = hit.sort_values("distance_ft")
+
+    out = hit.to_crs(parcels.crs if parcels.crs else "EPSG:4326")
+    notice = []
+    for _, row in hit.iterrows():
+        notice.append({
+            "owner": str(row[owner_col]) if owner_col else None,
+            "address": str(row[addr_col]) if addr_col else None,
+            "distance_ft": float(row["distance_ft"]),
+        })
+    unnamed = sum(1 for n in notice if not n["owner"] or n["owner"] == "nan")
+
+    note_bits = []
+    if owner_col is None:
+        note_bits.append("No column in this parcel layer looks like an owner name, "
+                         "so the list has shapes but no names. Name the column with "
+                         "owner_field if you know it.")
+    if unnamed:
+        note_bits.append(f"{unnamed} of these parcels have no owner recorded in the "
+                         f"data. They still have to be notified; look them up.")
+    if excluded:
+        note_bits.append(f"The subject property was excluded from the list.")
+    note_bits.append("Confirm the radius and who must be served against your local "
+                     "ordinance before sending anything. Rules differ by town.")
+
+    return {"result": _fc(out),
+            "recipe": {"tool": "notice_list", "distance_ft": feet,
+                       "parcels_notified": len(notice),
+                       "owner_field": owner_col, "address_field": addr_col,
+                       "subject_parcels_excluded": excluded,
+                       "notice_list": notice,
+                       "note": " ".join(note_bits)}}
+
+
+register(Tool(
+    id="notice_list", title="Who has to be notified about this?",
+    noun="Notice list", category="hearings and notices", returns="layer",
+    description="Given a parcel layer and the property an application is about, "
+                "find every parcel within a set distance in feet and build the "
+                "list of owners to notify, sorted by how close they are. Measures "
+                "from the property line, not the centre, and leaves the subject "
+                "property out of its own list. This is the abutter list, certified "
+                "list, or notice of hearing list that a zoning or planning board "
+                "asks for. Confirm the radius against the local ordinance.",
+    params={"type": "object", "required": ["parcels", "subject"], "properties": {
+        "parcels": {"type": "object",
+                    "description": "the parcel layer to search, as a GeoJSON "
+                                   "FeatureCollection"},
+        "subject": {"type": "object",
+                    "description": "the property the application is about"},
+        "distance_ft": {"type": "number", "default": 200,
+                        "description": "notice radius in feet, commonly 200, "
+                                       "300 or 500"},
+        "owner_field": {"type": "string",
+                        "description": "column holding the owner name, if branch "
+                                       "cannot find it"},
+        "address_field": {"type": "string",
+                          "description": "column holding the mailing address"}}},
+    run=_run_notice_list))
