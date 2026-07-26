@@ -24,4 +24,6 @@ for t in shell lineage replay interrogate table connector notice finder shade ex
   printf "%-11s pass=%-3s fail=%s%s\n" "$t" "$n" "$f" "$([ "$c" != 0 ] && echo '  CRASHED')"
   echo "$out" | grep -E '^FAIL|^CRASH' && fail=1
 done
+echo
+node "$PWD/tests/web/style.mjs" web/index.html || fail=1
 exit $fail

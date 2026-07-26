@@ -22,6 +22,15 @@ that ghost wastes hours. Running the shipped code directly does not lie.
 | `connector.js` | the ArcGIS form, and checking a layer before downloading it |
 | `notice.js` | the abutter list renders and exports with correct CSV quoting |
 | `finder.js` | search results are labelled honestly and land as a real layer |
+| `example.js` | the first thing a visitor clicks survives a public service being down |
+| `shade.js` | the colour means a measure, never an id or the source's bookkeeping |
+| `style.mjs` | design rules that need no browser: tokens, wrapping, themed controls |
+
+`style.mjs` is not a unit test, it is the design system as an assertion. Every
+rule in it exists because that exact violation shipped: a hard-coded hex, a
+component style scoped to one parent, a MapLibre control left at its light
+default on a dark map, and a URL clipped at a panel edge in the one panel whose
+whole job is showing provenance.
 
 ## About the stub
 

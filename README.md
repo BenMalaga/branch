@@ -122,7 +122,7 @@ onto the active map. See [`arcgis/README.md`](arcgis/README.md).
 ```bash
 pip install -e ".[dev]"
 pytest              # 129 tests
-./tests/web/run.sh  # 95 checks against the frontend, no browser needed
+./tests/web/run.sh  # 106 checks against the frontend, no browser needed
 ```
 
 The frontend checks execute `web/index.html`'s real script under a small DOM and
