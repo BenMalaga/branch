@@ -249,7 +249,9 @@ def test_a_rate_over_a_county_sized_area_is_not_rounded_to_zero():
 
 
 def test_a_city_scale_rate_keeps_readable_precision():
+    """Six significant figures, so compare relatively rather than absolutely."""
     out = registry.get("summarize_within").run(
         {"areas": _fc(_f(SQUARE, NAME="a")), "items": _fc(_pt(-74.645, 40.355))})
     p = out["result"]["features"][0]["properties"]
-    assert abs(p["per_acre"] - 1 / p["acres"]) < 1e-9
+    true = 1 / p["acres"]
+    assert abs(p["per_acre"] - true) / true < 1e-5, (p["per_acre"], true)
