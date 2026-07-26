@@ -10,13 +10,13 @@ import re;s=open('web/index.html',encoding='utf-8').read()
 open('/tmp/next.js','w').write(re.findall(r'<script>(.*?)</script>',s,re.S)[-1])"
 node --check /tmp/next.js || exit 1
 fail=0
-for t in shell lineage replay interrogate table; do
+for t in shell lineage replay interrogate table connector; do
   out=$(node -e "
     require('$PWD/tests/web/stub.js');const fs=require('fs');
     globalThis.pmtiles={Protocol:class{constructor(){this.tile=()=>{}}}};
     globalThis.document.documentElement={dataset:{},style:{setProperty(){},getPropertyValue(){return ''}}};
-    (0,eval)(fs.readFileSync('/tmp/next.js','utf8').replace(/\ninit\(\);\s*\$/,'')
-      +'\n;\n'+fs.readFileSync('$PWD/tests/web/'+'$t'+'.js','utf8'));
+    (0,eval)('(async()=>{'+fs.readFileSync('/tmp/next.js','utf8').replace(/\ninit\(\);\s*\$/,'')
+      +'\n;\n'+fs.readFileSync('$PWD/tests/web/'+'$t'+'.js','utf8')+'})()');
   " 2>&1 | grep -v Warning)
   n=$(echo "$out" | grep -cE '^PASS|OK$'); f=$(echo "$out" | grep -cE '^FAIL')
   printf "%-9s pass=%-3s fail=%s\n" "$t" "$n" "$f"

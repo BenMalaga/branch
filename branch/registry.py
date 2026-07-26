@@ -1027,3 +1027,47 @@ register(Tool(
         "layer": {"type": "object", "description": "point GeoJSON to aggregate"},
         "resolution": {"type": "integer", "description": "H3 resolution 7-10 (default 8, higher = finer)"}}},
     run=_run_density))
+
+
+def _run_arcgis(params: dict) -> dict:
+    from . import esri
+
+    url = str(params.get("url", "")).strip()
+    bbox = params["bbox"]
+    where = str(params.get("where", "") or "1=1").strip()
+    limit = int(params.get("limit", 2000) or 2000)
+    try:
+        got = esri.fetch(url, tuple(bbox), where=where, limit=limit)
+    except esri.EsriError as exc:
+        raise ValueError(str(exc)) from None
+    info = got["info"]
+    return {"result": {"type": "FeatureCollection", "features": got["features"]},
+            "recipe": {"tool": "arcgis", "url": url, "layer": info["name"],
+                       "bbox": list(bbox), "where": where,
+                       "features": len(got["features"]),
+                       "geometry_type": info["geometry_type"],
+                       "source": f"{info['name']}, published by its own agency "
+                                 f"on ArcGIS REST"}}
+
+
+register(Tool(
+    id="arcgis", title="Bring in a layer your town already publishes",
+    noun="Local layer", category="map data", returns="layer",
+    description="Pull parcels, zoning, flood zones, capital projects or any "
+                "other layer straight from an ArcGIS REST service, the way most "
+                "US towns, counties and states already publish their data. Paste "
+                "the layer URL, ending in the layer number. No account and no key: "
+                "if the agency publishes it openly, branch can read it. This is "
+                "how you get the local data OpenStreetMap does not have. Also "
+                "called an ArcGIS FeatureServer or MapServer query.",
+    params={"type": "object", "required": ["url", "bbox"], "properties": {
+        "url": {"type": "string",
+                "description": "the layer URL, ending in its number, "
+                               "for example .../FeatureServer/0"},
+        "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                 "maxItems": 4, "description": "[west, south, east, north] in degrees"},
+        "where": {"type": "string", "default": "1=1",
+                  "description": "optional filter, written as SQL, "
+                                 "for example LANDUSE = 'VACANT'"},
+        "limit": {"type": "integer", "default": 2000, "minimum": 1, "maximum": 6000}}},
+    run=_run_arcgis))

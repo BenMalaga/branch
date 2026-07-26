@@ -180,6 +180,25 @@ def list_tools():
                     for t in registry.all_tools()])
 
 
+@app.get("/api/esri/describe")
+def esri_describe():
+    """What an ArcGIS layer holds, before anyone commits to downloading it.
+
+    Pasting a URL and getting back "12,000 shapes with no fields you wanted" is
+    the slow way to find out. This answers the question first: what it is called,
+    what shape it is, which columns exist, and the ground it actually covers.
+    """
+    from . import esri
+
+    try:
+        url = esri.check_url(request.args.get("url", ""))
+        return jsonify({"result": esri.describe(url)})
+    except esri.EsriError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": f"{type(e).__name__}: {e}"}), 400
+
+
 @app.post("/api/tools/<tool_id>/run")
 def run_tool(tool_id):
     """Execute one tool deterministically. Returns {result, recipe}."""

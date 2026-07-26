@@ -984,7 +984,47 @@ function openTool(id){
   $("panelBody").querySelectorAll('[data-kind="point"]').forEach(b=>b.onclick=()=>{
     pickTarget=b; b.textContent="click the map..."; map.getCanvas().style.cursor="crosshair";
   });
+  if(props.url){
+    $("f_url").insertAdjacentHTML("afterend",
+      `<button class="btn wide" type="button" id="peek" style="margin-top:6px">Check this layer first</button>`
+      +`<div id="peekOut"></div>`);
+    $("peek").onclick=()=>peekLayer();
+  }
   $("run").onclick=()=>runTool(t);
+}
+// What is in there, before committing to a download.
+async function peekLayer(){
+  const url=($("f_url")||{}).value||"";
+  const out=$("peekOut"), btn=$("peek");
+  out.innerHTML=""; btn.disabled=true; btn.textContent="Checking...";
+  try{
+    const r=await fetch("/api/esri/describe?url="+encodeURIComponent(url));
+    const d=await r.json();
+    if(d.error) throw new Error(d.error);
+    const i=d.result;
+    const shape=String(i.geometry_type||"").replace("esriGeometry","").toLowerCase()||"shape";
+    const inView=(()=>{
+      if(!i.extent) return null;
+      const b=map.getBounds(), [w,s2,e,n2]=i.extent;
+      return !(e<b.getWest()||w>b.getEast()||n2<b.getSouth()||s2>b.getNorth());
+    })();
+    out.innerHTML=`<div class="sec" style="margin-top:8px">`
+      +`<div class="nm">${esc(i.name)}</div>`
+      +`<div class="sub">${esc(shape)} features`
+        +(i.description?`. ${esc(i.description.slice(0,180))}`:"")+`</div>`
+      +(inView===false?`<div class="msg err" style="margin-top:8px">This service does not `
+        +`reach where you are looking. It publishes one jurisdiction. Move the map to its `
+        +`area first.</div>`
+        :inView===true?`<div class="note" style="margin-top:8px">It covers the current view.</div>`
+        :`<div class="note" style="margin-top:8px">This service does not publish its extent, `
+         +`so branch cannot check coverage in advance.</div>`)
+      +(i.fields.length?`<div class="cat">Columns you can filter on</div>`
+        +`<div class="chips">`+i.fields.slice(0,40).map(f=>
+          `<span class="tag" title="${esc(f.type)}">${esc(f.name)}</span>`).join("")+`</div>`:"")
+      +`</div>`;
+  }catch(e){
+    out.innerHTML=`<div class="msg err" style="margin-top:8px">${esc(e.message)}</div>`;
+  }finally{ btn.disabled=false; btn.textContent="Check this layer first"; }
 }
 let pickTarget=null;
 async function runTool(t){
