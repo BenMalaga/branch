@@ -1367,22 +1367,49 @@ function download(L){
 
 /* ---- example ------------------------------------------------------------ */
 async function runExample(){
+  // The example is the first thing a visitor clicks, so it must not dead-end
+  // when a free public service is having a bad day. It tries the richer chain
+  // first and falls back to one that leans on a different provider, saying so.
   const bbox=[-73.998,40.725,-73.985,40.737];
-  busy(true,"Loading OpenStreetMap data");
+  map.fitBounds([[bbox[0],bbox[1]],[bbox[2],bbox[3]]],{padding:50});
+  busy(true,"Fetching restaurants from OpenStreetMap");
   try{
-    map.fitBounds([[bbox[0],bbox[1]],[bbox[2],bbox[3]]],{padding:50});
     const d=await callTool("osm",{bbox,tags:{amenity:"restaurant"}});
-    addLayer("Map data",d.result,{fit:false});
-    busy(true,"Aggregating");
+    addLayer("Restaurants",d.result,{fit:false,src:{t:"osm",p:{bbox,tags:{amenity:"restaurant"}}}});
+    busy(true,"Grouping them into hexagons");
     const h=await callTool("density_hexbin",{layer:d.result,resolution:9});
     addLayer("Density",h.result,{fit:false});
     openCard("Density",`<div class="sec"><div class="kvbig"><span>hexagons</span>`
       +`<b>${(h.result.features||[]).length}</b></div>`
-      +`<div class="note">Restaurants from OpenStreetMap, grouped into hexagons.</div></div>`
+      +`<div class="note">Restaurants from OpenStreetMap, grouped into hexagons. `
+      +`Every number here can be traced back through the Audit tab.</div></div>`
       +recipeHTML(h.recipe));
     tab="layers"; renderPanel();
-  }catch(e){ openCard("The example failed",`<div class="sec">${esc(e.message)}</div>`); }
-  finally{ busy(false); }
+    return;
+  }catch(e){
+    busy(true,"OpenStreetMap is not answering, trying the census instead");
+    try{
+      const t=await callTool("census_geo",{bbox,level:"block group"});
+      const L=addLayer("Census block groups",t.result,
+        {fit:false,src:{t:"census_geo",p:{bbox,level:"block group"}}});
+      openCard("Census block groups",
+        `<div class="sec"><div class="kvbig"><span>areas</span>`
+        +`<b>${(t.result.features||[]).length}</b></div>`
+        +`<div class="note">OpenStreetMap's Overpass service is not answering right `
+        +`now, so this example used the US Census instead. Both are free public `
+        +`services and neither is something branch controls. Each area carries its `
+        +`GEOID, the key that joins census and assessor tables to the map.</div></div>`
+        +recipeHTML(t.recipe));
+      tab="layers"; renderPanel();
+      return;
+    }catch(e2){
+      openCard("Both services are down",
+        `<div class="sec">branch could not reach OpenStreetMap or the US Census just `
+        +`now. Both are free public services, and nothing is wrong with your setup. `
+        +`The tools that work without any network, such as buffer and clip, still do.</div>`
+        +`<div class="sec sub">${esc(e2.message||e.message)}</div>`);
+    }
+  }finally{ busy(false); }
 }
 
 /* ---- overlays ----------------------------------------------------------- */
