@@ -206,13 +206,34 @@ def _repair(gdf: gpd.GeoDataFrame, what: str) -> gpd.GeoDataFrame:
 
 
 # --- geoprocessing tools -----------------------------------------------------
+BUFFER_LIMIT_M = 500_000          # 500 km. Past this it is not a planning question.
+
+
 def _run_buffer(params: dict) -> dict:
     gdf = _read_fc(params["layer"])
     dist = float(params["distance_m"])
+    if abs(dist) > BUFFER_LIMIT_M:
+        raise ValueError(
+            f"A {abs(dist):,.0f} m buffer is larger than branch will draw "
+            f"({BUFFER_LIMIT_M:,} m). Check the units: this value is in metres, "
+            f"not feet.")
     metric = gdf.to_crs(gdf.estimate_utm_crs())     # grounding: reproject to meters
     metric["geometry"] = metric.buffer(dist)
-    return {"result": _fc(metric),
-            "recipe": {"tool": "buffer", "distance_m": dist}}
+    # A negative buffer can consume a shape completely. Handing back a feature
+    # with no geometry looks like an answer and breaks everything downstream.
+    kept = metric[metric.geometry.map(_has_shape)]
+    lost = len(metric) - len(kept)
+    if kept.empty:
+        raise ValueError(
+            f"A {dist:,.0f} m buffer removes every shape in this layer entirely, "
+            f"so there is nothing left to draw. Use a smaller inward distance.")
+    return {"result": _fc(kept),
+            "recipe": {"tool": "buffer", "distance_m": dist,
+                       "features": int(len(kept)),
+                       **({"shapes_consumed": int(lost),
+                           "note": f"{lost} shape{'s' if lost != 1 else ''} vanished "
+                                   f"entirely at this inward distance and were left out."}
+                          if lost else {})}}
 
 
 register(Tool(
@@ -262,6 +283,11 @@ def _run_clip(params: dict) -> dict:
     mask = (boundary.union_all() if hasattr(boundary, "union_all")
             else boundary.unary_union)
     clipped = gdf.clip(mask)
+    if clipped.empty:
+        raise ValueError(
+            "Nothing in that layer falls inside the boundary, so trimming it "
+            "leaves an empty layer. Check that the two are in the same place: "
+            "an empty result on a map is indistinguishable from a real finding.")
     return {"result": _fc(clipped),
             "recipe": {"tool": "clip", "kept": int(len(clipped)),
                        "of": int(len(gdf))}}
@@ -1371,6 +1397,18 @@ def _run_summarize_within(params: dict) -> dict:
     reps["geometry"] = right.geometry.representative_point()
 
     out = areas.copy().reset_index(drop=True)
+    # Never write over a column the layer arrived with. A parcel layer whose
+    # "count" means housing units must not come back holding our count instead.
+    added = ["count", "acres", "per_acre"] + (["total", "average"] if field else [])
+    renamed = {}
+    for name in added:
+        if name in out.columns:
+            keep = f"{name}_original"
+            i = 2
+            while keep in out.columns:
+                keep, i = f"{name}_original_{i}", i + 1
+            out = out.rename(columns={name: keep})
+            renamed[name] = keep
     out["_area_id"] = out.index
     joined = gpd.sjoin(reps, out[["_area_id", "geometry"]], predicate="within",
                        how="inner")
@@ -1395,6 +1433,12 @@ def _run_summarize_within(params: dict) -> dict:
     unplaced = len(reps) - len(joined)
     empty = int((out["count"] == 0).sum())
     bits = [f"{len(joined):,} of {len(reps):,} counted."]
+    if renamed:
+        bits.append("This layer already had "
+                    + ", ".join(sorted(renamed)) + ", so "
+                    + ("that column was" if len(renamed) == 1 else "those columns were")
+                    + " kept as "
+                    + ", ".join(renamed[k] for k in sorted(renamed)) + ".")
     if unplaced:
         bits.append(f"{unplaced:,} fell outside every area and were left out.")
     if empty:
@@ -1403,6 +1447,7 @@ def _run_summarize_within(params: dict) -> dict:
 
     return {"result": _fc(out.to_crs("EPSG:4326") if out.crs else out),
             "recipe": {"tool": "summarize_within", "field": field,
+                       **({"renamed_columns": renamed} if renamed else {}),
                        "areas": int(len(out)), "items_counted": int(len(joined)),
                        "items_outside": int(unplaced), "empty_areas": empty,
                        "note": " ".join(bits)}}

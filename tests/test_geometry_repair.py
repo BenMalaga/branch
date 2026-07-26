@@ -116,3 +116,67 @@ def test_a_broken_line_stays_a_line_and_does_not_become_an_area():
                                                      [-74.65, 40.35]]}
     out = registry.get("buffer").run({"layer": _fc(_f(selfish)), "distance_m": 10})
     assert out["result"]["features"], "the line should still buffer"
+
+
+# ---------- answers that used to look fine and were not ----------
+
+def test_a_buffer_that_erases_everything_is_refused_not_returned_as_null():
+    """It returned a feature whose geometry was null, which reads as an answer."""
+    with pytest.raises(ValueError) as e:
+        registry.get("buffer").run({"layer": _fc(_f(SQUARE)), "distance_m": -100000})
+    assert "nothing left to draw" in str(e.value)
+
+
+def test_an_absurd_buffer_distance_suggests_the_likely_mistake():
+    with pytest.raises(ValueError) as e:
+        registry.get("buffer").run({"layer": _fc(_f(SQUARE)), "distance_m": 1e9})
+    assert "metres" in str(e.value)
+
+
+def test_a_partial_inward_buffer_reports_what_it_consumed():
+    """One shape vanishing while others survive must be said out loud."""
+    big = {"type": "Polygon", "coordinates": [[
+        [-74.70, 40.30], [-74.60, 40.30], [-74.60, 40.40], [-74.70, 40.40],
+        [-74.70, 40.30]]]}
+    tiny = {"type": "Polygon", "coordinates": [[
+        [-74.6500, 40.3500], [-74.6499, 40.3500], [-74.6499, 40.3501],
+        [-74.6500, 40.3501], [-74.6500, 40.3500]]]}
+    out = registry.get("buffer").run(
+        {"layer": _fc(_f(big), _f(tiny)), "distance_m": -50})
+    assert out["recipe"]["shapes_consumed"] == 1
+    assert "vanished" in out["recipe"]["note"]
+    assert len(out["result"]["features"]) == 1
+
+
+def test_clipping_to_somewhere_the_layer_does_not_reach_is_refused():
+    """An empty layer on a map is indistinguishable from a real finding, which is
+    exactly the bug the tree census already caused here once."""
+    paris = {"type": "Polygon", "coordinates": [[
+        [2.2, 48.8], [2.3, 48.8], [2.3, 48.9], [2.2, 48.9], [2.2, 48.8]]]}
+    with pytest.raises(ValueError) as e:
+        registry.get("clip").run({"layer": _fc(_f(SQUARE)),
+                                  "boundary": _fc(_f(paris))})
+    assert "indistinguishable from a real finding" in str(e.value)
+
+
+def test_the_users_own_count_column_is_kept_not_overwritten():
+    """Their 'count' might be housing units. Ours must not silently replace it."""
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(SQUARE, NAME="a", count=999, acres=42)),
+         "items": _fc(_pt(-74.645, 40.355))})
+    p = out["result"]["features"][0]["properties"]
+    assert p["count_original"] == 999
+    assert p["acres_original"] == 42
+    assert p["count"] == 1                       # ours, alongside theirs
+    assert out["recipe"]["renamed_columns"] == {"count": "count_original",
+                                                "acres": "acres_original"}
+    assert "already had" in out["recipe"]["note"]
+
+
+def test_a_second_collision_does_not_clobber_the_first_rescue():
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(SQUARE, NAME="a", count=1, count_original=2)),
+         "items": _fc(_pt(-74.645, 40.355))})
+    p = out["result"]["features"][0]["properties"]
+    assert p["count_original"] == 2              # untouched
+    assert p["count_original_2"] == 1            # the one we displaced
