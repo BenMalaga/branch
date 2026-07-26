@@ -61,11 +61,19 @@ def check_url(url: str) -> str:
         infos = socket.getaddrinfo(host, 443, proto=socket.IPPROTO_TCP)
     except OSError:
         raise EsriError(f"No server answers at {host}. Check the address.") from None
-    # A public service must not be a way to read a private network.
+    # A public service must not be a way to read a private network. ip_address
+    # does not consider carrier-grade NAT space private, and on a cloud host that
+    # range is very much internal.
+    extra = [ipaddress.ip_network("100.64.0.0/10"),      # carrier-grade NAT
+             ipaddress.ip_network("198.18.0.0/15"),      # benchmarking
+             ipaddress.ip_network("::ffff:0:0/96")]      # IPv4-mapped IPv6
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if (ip.is_private or ip.is_loopback or ip.is_link_local
-                or ip.is_reserved or ip.is_multicast):
+        mapped = getattr(ip, "ipv4_mapped", None) or ip
+        if (mapped.is_private or mapped.is_loopback or mapped.is_link_local
+                or mapped.is_reserved or mapped.is_multicast
+                or mapped.is_unspecified
+                or any(ip in net for net in extra)):
             raise EsriError(f"{host} resolves to a private address, which branch "
                             f"will not fetch.")
     return url
@@ -189,6 +197,8 @@ def describe(url: str) -> dict:
         "extent": _wgs84_extent(meta.get("extent") or {}),
         "max_record_count": int(meta.get("maxRecordCount") or 1000),
         "supports_geojson": "geoJSON" in (meta.get("supportedQueryFormats") or ""),
+        "supports_paging": bool(
+            (meta.get("advancedQueryCapabilities") or {}).get("supportsPagination")),
         "fields": [{"name": f.get("name"), "alias": f.get("alias"),
                     "type": str(f.get("type", "")).replace("esriFieldType", "")}
                    for f in fields],
@@ -247,7 +257,16 @@ def fetch(url: str, bbox: tuple[float, float, float, float],
             f"the {limit:,} branch will bring in at once. Zoom in, raise the limit, "
             f"or narrow it with a filter.")
 
-    page = max(1, min(limit, int(info["max_record_count"] or 1000)))
+    cap = int(info["max_record_count"] or 1000)
+    if not info["supports_paging"] and count > cap:
+        # Without paging support branch cannot get past the server's own ceiling,
+        # and sending resultOffset to a server that ignores it would return page
+        # one again, silently, as duplicates.
+        raise EsriError(
+            f"That view holds {count:,} features but '{info['name']}' only serves "
+            f"{cap:,} at a time and does not support paging. Zoom in, or narrow "
+            f"it with a filter, so the whole answer fits in one request.")
+    page = max(1, min(limit, cap))
     params = {**common, "outFields": "*", "returnGeometry": "true",
               "geometryPrecision": 6}
     feats, offset = [], 0
@@ -293,28 +312,72 @@ def _esri_to_geojson(payload: dict) -> list[dict]:
         elif gtype == "esriGeometryPolygon":
             rings = [r for r in (g.get("rings") or []) if len(r) > 3]
             if rings:
-                # Esri packs outer rings and holes into one list, clockwise for
-                # outer. Splitting on winding keeps courtyards as holes rather
-                # than as separate buildings.
-                polys, current = [], None
-                for ring in rings:
-                    if _clockwise(ring):
-                        if current:
-                            polys.append(current)
-                        current = [ring]
-                    elif current:
-                        current.append(ring)
-                    else:
-                        current = [ring]
-                if current:
-                    polys.append(current)
-                geom = ({"type": "Polygon", "coordinates": polys[0]} if len(polys) == 1
-                        else {"type": "MultiPolygon", "coordinates": polys})
+                polys = _rings_to_polygons(rings)
+                if polys:
+                    geom = ({"type": "Polygon", "coordinates": polys[0]}
+                            if len(polys) == 1
+                            else {"type": "MultiPolygon", "coordinates": polys})
         if geom is None:
             continue
         out.append({"type": "Feature", "geometry": geom,
                     "properties": f.get("attributes") or {}})
     return out
+
+
+def _rings_to_polygons(rings: list) -> list:
+    """Group Esri rings into polygons, putting each hole in the part that holds it.
+
+    Esri packs exteriors and holes into one flat list, clockwise for exterior.
+    The convention is that a hole follows its own exterior, and real exports do
+    break that. Assigning by position alone cut a pond out of a different part of
+    the same parcel, which makes an invalid shape and a wrong area.
+    """
+    from shapely.geometry import Polygon
+
+    outers = [r for r in rings if _clockwise(r)]
+    holes = [r for r in rings if not _clockwise(r)]
+    if not outers:                      # all counter-clockwise: treat as exteriors
+        outers, holes = holes, []
+    parts = [[o] for o in outers]
+    if holes:
+        shapes = []
+        for o in outers:
+            try:
+                shapes.append(Polygon(o))
+            except Exception:
+                shapes.append(None)
+        for hole in holes:
+            try:
+                point = Polygon(hole).representative_point()
+            except Exception:
+                point = None
+            target = None
+            if point is not None:
+                # the smallest exterior that actually contains it
+                candidates = [(sh.area, i) for i, sh in enumerate(shapes)
+                              if sh is not None and sh.contains(point)]
+                if candidates:
+                    target = min(candidates)[1]
+            if target is None:
+                target = _preceding_outer(rings, hole, outers)
+            if target is not None:
+                parts[target].append(hole)
+    return parts
+
+
+def _preceding_outer(rings: list, hole: list, outers: list):
+    """Fall back to Esri's own convention: the exterior listed before this hole."""
+    try:
+        at = rings.index(hole)
+    except ValueError:
+        return 0 if outers else None
+    seen = None
+    for ring in rings[:at]:
+        if _clockwise(ring):
+            seen = ring
+    if seen is None:
+        return 0 if outers else None
+    return outers.index(seen)
 
 
 def _clockwise(ring: list) -> bool:

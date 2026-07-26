@@ -287,3 +287,67 @@ def test_a_real_programming_error_is_not_dressed_up_as_an_outage():
     from branch.server import _readable
 
     assert _readable(KeyError("boom")) == "KeyError: 'boom'"
+
+
+# ---------- what the adversarial audit turned up ----------
+
+@pytest.mark.parametrize("host", ["100.64.12.34", "198.18.5.5"])
+def test_carrier_grade_nat_and_benchmark_space_are_refused(host):
+    """ip_address does not call these private, but on a cloud host they are."""
+    with pytest.raises(esri.EsriError):
+        esri.check_url(f"https://{host}/arcgis/rest/services/X/FeatureServer/0")
+
+
+OUT1 = [[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]        # clockwise
+OUT2 = [[20, 20], [20, 30], [30, 30], [30, 20], [20, 20]]  # clockwise
+POND_IN_1 = [[2, 2], [4, 2], [4, 4], [2, 4], [2, 2]]       # counter
+POND_IN_2 = [[22, 22], [24, 22], [24, 24], [22, 24], [22, 22]]
+
+
+def _poly_from(rings):
+    from shapely.geometry import shape
+    feats = esri._esri_to_geojson({"geometryType": "esriGeometryPolygon",
+                                   "features": [{"geometry": {"rings": rings},
+                                                 "attributes": {}}]})
+    return shape(feats[0]["geometry"]), feats[0]["geometry"]
+
+
+def test_a_hole_goes_in_the_part_that_actually_contains_it():
+    """Listed after the second exterior but geometrically inside the first. By
+    position alone the pond was cut out of the wrong part, making an invalid
+    shape."""
+    sh, geom = _poly_from([OUT1, OUT2, POND_IN_1])
+    assert sh.is_valid
+    assert sh.area == 196.0                       # 96 + 100
+    holed = [i for i, part in enumerate(geom["coordinates"]) if len(part) > 1]
+    assert holed == [0], "the pond belongs to part 1"
+
+
+def test_the_conventional_ring_order_still_works():
+    sh, geom = _poly_from([OUT1, OUT2, POND_IN_2])
+    assert sh.is_valid and sh.area == 196.0
+    holed = [i for i, part in enumerate(geom["coordinates"]) if len(part) > 1]
+    assert holed == [1]
+
+
+def test_one_polygon_with_a_courtyard_is_unchanged():
+    sh, geom = _poly_from([OUT1, POND_IN_1])
+    assert geom["type"] == "Polygon"
+    assert len(geom["coordinates"]) == 2
+    assert sh.area == 96.0
+
+
+def test_a_server_that_cannot_page_refuses_rather_than_truncating(monkeypatch):
+    """Sending resultOffset to a server that ignores it returns page one twice,
+    which is a layer of duplicates wearing a real count."""
+    info = {"name": "Parcels", "geometry_type": "esriGeometryPolygon",
+            "extent": (-75.2, 40.1, -74.7, 40.5), "max_record_count": 1000,
+            "supports_geojson": True, "supports_paging": False, "fields": [],
+            "description": ""}
+    monkeypatch.setattr(esri, "check_url", lambda u: u)
+    monkeypatch.setattr(esri, "describe", lambda u: info)
+    monkeypatch.setattr(esri, "_get", lambda *a, **k: {"count": 5000})
+    with pytest.raises(esri.EsriError) as e:
+        esri.fetch(OPEN_URL, (-75.0, 40.2, -74.8, 40.4), limit=6000)
+    assert "does not support paging" in str(e.value)
+    assert "5,000" in str(e.value)
