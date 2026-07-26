@@ -1187,12 +1187,24 @@ FEET_PER_M = 3.280839895
 OWNER_HINTS = ["owner", "own_name", "ownername", "owner_name", "owner1",
                "deed_owner", "taxpayer", "prop_owner", "grantee"]
 ADDR_HINTS = ["mail_addr", "mailing", "mail_add", "owner_addr", "own_addr",
-              "address", "situs", "prop_addr", "location", "street"]
+              "address", "situs", "prop_addr", "site_addr", "location",
+              "street", "addr"]     # bare "addr" last: SITE_ADDR is still an address
 # A column can contain an owner hint and still not be a name: OWNER_ADDRESS,
-# OWNER_CITY and OWNER_ZIP all contain "owner". Matching one of these put
-# mailing addresses in the owner column of a legal notice.
+# OWNER_CITY, OWNER_OCCUPIED and NO_OWNER_FLAG all contain "owner". Matching one
+# of these put mailing addresses, or a Y/N flag, in the owner column of a legal
+# notice.
 NOT_A_NAME = ["addr", "address", "city", "state", "zip", "postal", "phone",
-              "email", "_id", "date", "class", "code"]
+              "email", "_id", "id_", "date", "class", "code", "flag",
+              "occupied", "count", "num", "type", "status", "no_", "pct",
+              "year", "acre", "area", "value", "amount"]
+# "ADDRESS_ID" is a key, not somewhere you post a letter.
+NOT_AN_ADDRESS = ["_id", "id_", "flag", "code", "type", "status", "count",
+                  "date", "num_"]
+# Assessors often split a name across columns. Serving "Nguyen" is not serving
+# "Alice Nguyen", so the parts are put back together.
+NAME_PARTS = [("owner_first_name", "owner_last_name"), ("first_name", "last_name"),
+              ("owner_first", "owner_last"), ("fname", "lname"),
+              ("firstname", "lastname")]
 
 
 def _pick_field(columns, hints, exclude=()):
@@ -1215,11 +1227,30 @@ def _pick_field(columns, hints, exclude=()):
     return None
 
 
+def owner_col_guess(frame, params):
+    """The owner column, resolved the same way the tool will resolve it."""
+    return params.get("owner_field") or _pick_field(
+        frame.columns, OWNER_HINTS, exclude=NOT_A_NAME)
+
+
 def _run_notice_list(params: dict) -> dict:
     import pandas as pd
 
+    parcels_in = len((params.get("parcels") or {}).get("features") or [])
     parcels = _read_fc(params["parcels"], "parcel layer")
     subject = _read_fc(params["subject"], "subject property")
+    lost_on_input = parcels_in - len(parcels)
+
+    # A notice radius runs from a property line. A point or a line has no
+    # boundary to run from, and measuring from it would silently produce a
+    # circle around a dot rather than around the lot.
+    flat = subject.geometry.map(lambda g: g.area == 0).all()
+    if flat:
+        kinds = ", ".join(sorted({g.geom_type for g in subject.geometry}))
+        raise ValueError(
+            f"The subject property has no area to measure from ({kinds}). A "
+            f"notice radius runs from the property line, so branch needs the "
+            f"lot itself. Draw or select the parcel rather than a point.")
 
     feet = float(params.get("distance_ft", 200))
     if feet <= 0:
@@ -1244,11 +1275,34 @@ def _run_notice_list(params: dict) -> dict:
             f"that the parcel layer covers this area and that the subject is in "
             f"the right place.")
 
-    # The applicant is not an abutter of their own application.
+    # The applicant is not an abutter of their own application. Identity has to
+    # be MUTUAL though: "more than half of this parcel is under the subject" is
+    # also true of every condo unit sharing one footprint, and dropping those
+    # removes real owners from a legal notice.
     own = s_m.geometry.union_all()
-    is_subject = hit.geometry.apply(
-        lambda g: g.intersection(own).area > 0.5 * g.area if g.area else False)
+    own_area = own.area
+
+    def _is_the_subject(g):
+        if not g.area or not own_area:
+            return False
+        shared = g.intersection(own).area
+        return shared > 0.9 * g.area and shared > 0.9 * own_area
+
+    is_subject = hit.geometry.apply(_is_the_subject)
     excluded = int(is_subject.sum())
+    # Several parcels can legitimately be co-extensive with the subject (a lot
+    # split into condo units). If they do not all belong to the same owner,
+    # branch will not choose which ones are the applicant.
+    if excluded > 1 and owner_col_guess(hit, params) is not None:
+        col = owner_col_guess(hit, params)
+        names = {str(v) for v in hit.loc[is_subject, col].tolist()}
+        if len(names) > 1:
+            raise ValueError(
+                f"{excluded} parcels occupy the same footprint as the subject "
+                f"property, and they have different owners: "
+                f"{', '.join(sorted(names)[:6])}. branch will not guess which one "
+                f"the application is about, because the others are abutters who "
+                f"must be served. Pass the subject as that single parcel.")
     hit = hit[~is_subject]
     if hit.empty:
         raise ValueError(f"Within {feet:g} feet there is only the subject property "
@@ -1256,7 +1310,17 @@ def _run_notice_list(params: dict) -> dict:
 
     owner_col = params.get("owner_field") or _pick_field(
         hit.columns, OWNER_HINTS, exclude=NOT_A_NAME)
-    addr_col = params.get("address_field") or _pick_field(hit.columns, ADDR_HINTS)
+    addr_col = params.get("address_field") or _pick_field(
+        hit.columns, ADDR_HINTS, exclude=NOT_AN_ADDRESS)
+    # A name split across two columns is one name.
+    first_col = last_col = None
+    if not params.get("owner_field"):
+        lower = {str(c).lower(): c for c in hit.columns}
+        for first, last in NAME_PARTS:
+            if first in lower and last in lower:
+                first_col, last_col = lower[first], lower[last]
+                owner_col = last_col
+                break
     for name, col in (("owner_field", owner_col), ("address_field", addr_col)):
         if col is not None and col not in hit.columns:
             raise ValueError(f"There is no column called {col!r} in the parcel "
@@ -1266,17 +1330,43 @@ def _run_notice_list(params: dict) -> dict:
     hit["distance_ft"] = (hit.geometry.distance(own) * FEET_PER_M).round(1)
     hit = hit.sort_values("distance_ft")
 
+    # The same parcel appearing twice in an export becomes two notices to one
+    # person and an inflated count of who was served.
+    dupe_key = [c for c in (owner_col_guess(hit, params),) if c] + ["distance_ft"]
+    before = len(hit)
+    hit = hit.drop_duplicates(subset=dupe_key) if len(dupe_key) > 1 else hit
+    duplicates = before - len(hit)
+
     out = hit.to_crs(parcels.crs if parcels.crs else "EPSG:4326")
+    def _name(row):
+        if first_col and last_col:
+            parts = [str(row[first_col] or "").strip(), str(row[last_col] or "").strip()]
+            joined = " ".join(p for p in parts if p and p.lower() != "nan")
+            return joined or None
+        return str(row[owner_col]) if owner_col else None
+
     notice = []
     for _, row in hit.iterrows():
         notice.append({
-            "owner": str(row[owner_col]) if owner_col else None,
+            "owner": _name(row),
             "address": str(row[addr_col]) if addr_col else None,
             "distance_ft": float(row["distance_ft"]),
         })
     unnamed = sum(1 for n in notice if not n["owner"] or n["owner"] == "nan")
 
     note_bits = []
+    if lost_on_input:
+        note_bits.append(f"{lost_on_input} parcel"
+                         f"{'s' if lost_on_input != 1 else ''} in the file had no "
+                         f"usable shape and could not be checked at all. Look "
+                         f"{'them' if lost_on_input != 1 else 'it'} up by hand: "
+                         f"a missing shape is not the same as a parcel outside "
+                         f"the radius.")
+    if duplicates:
+        one = duplicates == 1
+        note_bits.append(f"{duplicates} duplicate record{'' if one else 's'} "
+                         f"{'was' if one else 'were'} removed, so nobody is "
+                         f"served twice.")
     if owner_col is None:
         note_bits.append("No column in this parcel layer looks like an owner name, "
                          "so the list has shapes but no names. Name the column with "
@@ -1285,7 +1375,11 @@ def _run_notice_list(params: dict) -> dict:
         note_bits.append(f"{unnamed} of these parcels have no owner recorded in the "
                          f"data. They still have to be notified; look them up.")
     if excluded:
-        note_bits.append(f"The subject property was excluded from the list.")
+        note_bits.append(
+            f"{excluded} parcel{'s' if excluded != 1 else ''} co-extensive with "
+            f"the subject "
+            f"{'were' if excluded != 1 else 'was'} excluded as the subject "
+            f"property itself.")
     note_bits.append("Confirm the radius and who must be served against your local "
                      "ordinance before sending anything. Rules differ by town.")
 
@@ -1294,6 +1388,8 @@ def _run_notice_list(params: dict) -> dict:
                        "parcels_notified": len(notice),
                        "owner_field": owner_col, "address_field": addr_col,
                        "subject_parcels_excluded": excluded,
+                       **({"parcels_unusable": lost_on_input} if lost_on_input else {}),
+                       **({"duplicates_removed": duplicates} if duplicates else {}),
                        "notice_list": notice,
                        "note": " ".join(note_bits)}}
 
