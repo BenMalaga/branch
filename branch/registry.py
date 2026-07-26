@@ -758,11 +758,37 @@ def _run_walkshed(params: dict) -> dict:
 
     G = data.get_graph(data.area_from_bbox(bbox))
     center = routing.nearest_node(G, lat, lon)
-    # Walking time is a property of this request (its speed), not of the graph,
-    # so it is computed on the fly rather than written onto shared edges.
+
+    # Hills change what a walk costs. Sample elevation once for the whole area,
+    # then price each edge by its own grade rather than pretending the ground is
+    # flat. Where there is no elevation data the flat assumption stays, and the
+    # recipe says so instead of implying terrain was considered.
+    from . import terrain
+    dem = terrain.fetch_dem(bbox) if params.get("terrain", True) else None
+    elev = {}
+    if dem is not None:
+        nodes = list(G.nodes)
+        lonlats = []
+        for nid in nodes:
+            nlat, nlon = geoutil.xy_to_latlon(G.nodes[nid]["x"], G.nodes[nid]["y"])
+            lonlats.append((nlon, nlat))
+        zs = terrain.sample(dem, lonlats)
+        elev = {nid: z for nid, z in zip(nodes, zs)}
+
+    steep = {"count": 0, "length_m": 0.0}
+
     def walk_time(u, v, edge):
         best = min((e.get("length", 0.0) for e in edge.values()), default=0.0)
-        return best / speed_ms
+        if not elev:
+            return best / speed_ms
+        slope = terrain.edge_slope(elev.get(u, float("nan")),
+                                  elev.get(v, float("nan")), best)
+        if abs(slope) >= 0.0833:
+            steep["count"] += 1
+            steep["length_m"] += best
+        kmh = terrain.tobler_speed(slope, speed_kmh)
+        return best / max(kmh * 1000.0 / 3600.0, 0.1)
+
     reachable = nx.ego_graph(G, center, radius=minutes * 60, distance=walk_time)
 
     geoms = [d["geometry"] for u, v, d in reachable.edges(data=True)]
@@ -773,9 +799,16 @@ def _run_walkshed(params: dict) -> dict:
     return {"result": {"type": "FeatureCollection", "features": [{
         "type": "Feature", "properties": {
             "minutes": minutes, "reach_acres": round(area_acres, 1),
+            "terrain": "measured from USGS 3DEP elevation" if elev
+                       else "flat ground assumed, no elevation data here",
             "streets_reached": reachable.number_of_edges()},
         "geometry": json.loads(gpd.GeoSeries([geoutil.geom_to_wgs(foot)]).to_json())["features"][0]["geometry"]}]},
-            "recipe": {"tool": "walkshed", "point": [lat, lon], "minutes": minutes}}
+            "recipe": {"tool": "walkshed", "point": [lat, lon], "minutes": minutes,
+                       "speed_kmh": speed_kmh,
+                       "terrain": ("USGS 3DEP elevation, Tobler hiking function"
+                                   if elev else "flat ground assumed"),
+                       "steep_edges_over_8_33pct": steep["count"],
+                       "steep_length_m": round(steep["length_m"])}}
 
 
 register(Tool(
@@ -787,7 +820,9 @@ register(Tool(
     params={"type": "object", "required": ["point"], "properties": {
         "point": {"type": "array", "items": {"type": "number"}, "description": "[lat, lon] origin"},
         "minutes": {"type": "number", "description": "walk-time budget (default 15)"},
-        "speed_kmh": {"type": "number", "description": "walking speed km/h (default 4.8)"}}},
+        "speed_kmh": {"type": "number", "description": "walking speed on the flat, km/h (default 4.8)"},
+        "terrain": {"type": "boolean",
+                    "description": "account for hills using elevation data (default true)"}}},
     run=_run_walkshed))
 
 

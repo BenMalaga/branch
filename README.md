@@ -23,7 +23,7 @@ and a function the optional assistant can call.
 | Category | Tools |
 |---|---|
 | Money | what will this cost to build, which land pays for itself (value per acre), is it worth it (payback and ROI) |
-| Getting around | what is within a short walk (walkshed), find the shadiest walk |
+| Getting around | what is within a short walk (walkshed, with hills measured from USGS elevation), find the shadiest walk |
 | Safety | what is too close to utility lines |
 | Map data | OpenStreetMap features, real jurisdiction borders (county, city, borough, neighborhood), official US census geography (tracts, block groups, blocks, places) with GEOID |
 | Shaping layers | everything within a distance, trim to an area, combine two layers, keep only what matches, where is it most concentrated, is this cluster real (Getis-Ord Gi\* with a false-discovery correction) |
