@@ -218,7 +218,41 @@ def run_tool(tool_id):
         # advice into a stack trace.
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({"error": f"{type(e).__name__}: {e}"}), 400
+        return jsonify({"error": _readable(e)}), 400
+
+
+# The services branch depends on are free and public, which means they go down.
+# When they do, a planner should be told which one and what to do, not handed
+# the name of a Python class and a connection pool.
+_OUTAGE = {
+    "overpass": "OpenStreetMap's Overpass service",
+    "nominatim": "OpenStreetMap's search service",
+    "tigerweb": "the US Census TIGERweb service",
+    "census.gov": "the US Census service",
+    "arcgis": "an ArcGIS service",
+    "amazonaws": "the ArcGIS Hub catalogue",
+    "3dep": "the USGS elevation service",
+    "nationalmap": "the USGS elevation service",
+}
+
+
+def _readable(exc: Exception) -> str:
+    import requests as _rq
+
+    text = str(exc)
+    if isinstance(exc, (_rq.exceptions.ConnectionError, _rq.exceptions.Timeout,
+                        _rq.exceptions.HTTPError)):
+        who = next((label for key, label in _OUTAGE.items() if key in text.lower()),
+                   "a public data service")
+        slow = isinstance(exc, _rq.exceptions.Timeout)
+        return (f"{who} did not answer, so branch could not finish this. "
+                + ("It is taking longer than branch will wait; try a smaller area."
+                   if slow else
+                   "It is a free public service and is probably busy or down. "
+                   "Nothing is wrong with your setup. Try again shortly."))
+    if isinstance(exc, MemoryError):
+        return ("That area is too large to work on at once. Zoom in and try again.")
+    return f"{type(exc).__name__}: {exc}"
 
 
 @app.post("/api/agent")

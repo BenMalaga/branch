@@ -248,3 +248,42 @@ def test_no_matches_suggests_how_to_ask(monkeypatch):
 def test_an_empty_query_is_refused():
     with pytest.raises(esri.EsriError):
         esri.search("  ")
+
+
+# ---------- what a planner reads when a free service is down ----------
+
+def test_an_outage_names_the_service_and_says_it_is_not_your_fault():
+    import requests as rq
+
+    from branch.server import _readable
+
+    msg = _readable(rq.exceptions.ConnectionError(
+        "HTTPSConnectionPool(host='overpass-api.de', port=443): Max retries"))
+    assert "Overpass" in msg
+    assert "Nothing is wrong with your setup" in msg
+    assert "HTTPSConnectionPool" not in msg
+
+
+def test_a_timeout_suggests_a_smaller_area():
+    import requests as rq
+
+    from branch.server import _readable
+
+    msg = _readable(rq.exceptions.Timeout("tigerweb.geo.census.gov timed out"))
+    assert "Census" in msg and "smaller area" in msg
+
+
+def test_an_unknown_service_still_reads_as_a_sentence():
+    import requests as rq
+
+    from branch.server import _readable
+
+    msg = _readable(rq.exceptions.ConnectionError("something.example.org refused"))
+    assert msg.startswith("a public data service did not answer")
+
+
+def test_a_real_programming_error_is_not_dressed_up_as_an_outage():
+    """A bug in branch must stay visible, not be blamed on someone else's server."""
+    from branch.server import _readable
+
+    assert _readable(KeyError("boom")) == "KeyError: 'boom'"
