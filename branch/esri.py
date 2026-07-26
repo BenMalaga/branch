@@ -129,13 +129,30 @@ def _wgs84_extent(extent: dict) -> tuple[float, float, float, float] | None:
         xmin, ymin = _merc_to_deg(xmin, ymin)
         xmax, ymax = _merc_to_deg(xmax, ymax)
     else:
-        try:
-            from pyproj import Transformer
-            tf = Transformer.from_crs(f"EPSG:{int(wkid)}", "EPSG:4326", always_xy=True)
-            xmin, ymin = tf.transform(xmin, ymin)
-            xmax, ymax = tf.transform(xmax, ymax)
-        except Exception:
+        moved = None
+        for authority in ("EPSG", "ESRI"):     # 102711 is an Esri number, not an EPSG one
+            try:
+                from pyproj import Transformer
+                tf = Transformer.from_crs(f"{authority}:{int(wkid)}", "EPSG:4326",
+                                          always_xy=True)
+                # Sample the edges, not just two corners: a conic or State Plane
+                # extent bows, so the corners alone understate its real reach.
+                xs, ys = [], []
+                for fx in (0.0, 0.5, 1.0):
+                    for fy in (0.0, 0.5, 1.0):
+                        px, py = tf.transform(xmin + (xmax - xmin) * fx,
+                                              ymin + (ymax - ymin) * fy)
+                        if _finite(px) and _finite(py):
+                            xs.append(px)
+                            ys.append(py)
+                if xs:
+                    moved = (min(xs), min(ys), max(xs), max(ys))
+                    break
+            except Exception:
+                continue
+        if moved is None:
             return None                        # unknown projection: do not guess
+        xmin, ymin, xmax, ymax = moved
     if not all(map(_finite, (xmin, ymin, xmax, ymax))):
         return None
     if abs(xmin) > 180 or abs(xmax) > 180 or abs(ymin) > 90 or abs(ymax) > 90:
@@ -210,9 +227,12 @@ def fetch(url: str, bbox: tuple[float, float, float, float],
 
     # Count first. A silent truncation reads as a complete answer.
     try:
-        count = int(_get(f"{url}/query",
-                         {**common, "returnCountOnly": "true", "f": "json"}
-                         ).get("count", 0))
+        counted = _get(f"{url}/query",
+                       {**common, "returnCountOnly": "true", "f": "json"})
+        # An old server that does not understand returnCountOnly replies with a
+        # normal feature payload. Reading a missing "count" as 0 would report
+        # "nothing here" for a layer that is full.
+        count = int(counted["count"]) if "count" in counted else -1
     except EsriError:
         count = -1                              # some old servers cannot count
     if count == 0:
@@ -227,14 +247,27 @@ def fetch(url: str, bbox: tuple[float, float, float, float],
             f"the {limit:,} branch will bring in at once. Zoom in, raise the limit, "
             f"or narrow it with a filter.")
 
+    page = max(1, min(limit, int(info["max_record_count"] or 1000)))
     params = {**common, "outFields": "*", "returnGeometry": "true",
-              "resultRecordCount": limit, "geometryPrecision": 6}
-    if info["supports_geojson"]:
-        fc = _get(f"{url}/query", {**params, "f": "geojson"}, timeout=90)
-        feats = fc.get("features") or []
-    else:
-        feats = _esri_to_geojson(_get(f"{url}/query", {**params, "f": "json"},
-                                      timeout=90))
+              "geometryPrecision": 6}
+    feats, offset = [], 0
+    while len(feats) < limit:
+        want = min(page, limit - len(feats))
+        query = {**params, "resultRecordCount": want}
+        if offset:
+            query["resultOffset"] = offset
+        if info["supports_geojson"]:
+            batch = (_get(f"{url}/query", {**query, "f": "geojson"},
+                          timeout=90).get("features") or [])
+        else:
+            batch = _esri_to_geojson(_get(f"{url}/query", {**query, "f": "json"},
+                                          timeout=90))
+        feats.extend(batch)
+        if len(batch) < want:
+            break                      # the server had nothing more to give
+        offset += len(batch)
+        if offset and count >= 0 and offset >= count:
+            break
     if not feats:
         raise EsriError(f"'{info['name']}' returned no shapes for this view.")
     return {"features": feats[:limit], "info": info,

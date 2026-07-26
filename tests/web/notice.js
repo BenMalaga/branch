@@ -26,3 +26,19 @@ ok("a name containing a comma and quotes is escaped", lines[3].startsWith('"Smit
 ok("an address containing a comma is quoted", /"9 Oak Ave, Apt 2"/.test(lines[3]));
 ok("'nan' does not reach the spreadsheet", !/nan/.test(csv));
 ok("distances are carried through", /14.2/.test(csv)&&/88.5/.test(csv));
+
+// A spreadsheet runs a cell starting with = + - or @. Owner names come out of an
+// assessor's database and are not trusted text.
+const nasty={...recipe,notice_list:[
+  {owner:'=HYPERLINK("http://x","click")',address:"1 Main St",distance_ft:5},
+  {owner:"+1-555-0100",address:"2 Oak",distance_ft:6},
+  {owner:"-Smith",address:"@3 Elm",distance_ft:7},
+  {owner:"Ann Reyes",address:"3 MAIN ST\rSUITE 4",distance_ft:8}]};
+wireList(nasty); $("noticeCsv").onclick();
+const c2=saved.text, l2=c2.split("\n");
+ok("a formula in an owner name is neutralised", /^"'=HYPERLINK/.test(l2[1]));
+ok("a leading + is neutralised", /'\+1-555-0100/.test(c2));
+ok("a leading - is neutralised", /'-Smith/.test(c2));
+ok("a leading @ in an address is neutralised", /'@3 Elm/.test(c2));
+ok("a bare carriage return is quoted, not a new row",
+   /"3 MAIN ST\rSUITE 4"/.test(c2) && l2.length===5);

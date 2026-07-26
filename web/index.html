@@ -422,7 +422,10 @@ function qty(n,unit){
 }
 function fmtVal(k,v){
   if(typeof v!=="number") return String(v);
-  if(/_usd$|per_acre$|^cost$/.test(k)) return "$"+Math.round(v).toLocaleString();
+  if(/_usd$|^(value|tax|revenue|cost)_per_acre$|^cost$/.test(k))
+    return "$"+Math.round(v).toLocaleString();
+  // a count per acre is a rate, and small ones are the interesting ones
+  if(/per_acre$/.test(k)) return v>=1?v.toFixed(2):v.toPrecision(3);
   if(/ratio/.test(k)) return v.toFixed(2);
   if(/years/.test(k)) return `${v} year${v===1?"":"s"}`;
   if(/rate$/.test(k)) return (v*100).toFixed(1)+"%";
@@ -1186,7 +1189,14 @@ function wireList(r){
   const btn=$("noticeCsv"); if(!btn) return;
   btn.onclick=()=>{
     const rows=r.notice_list||[];
-    const cell=v=>{ const t=v==null?"":String(v); return /[",\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t; };
+    // Excel and Sheets execute a cell that starts with = + - or @, so a name
+    // out of an assessor's database is prefixed to keep it text. \r matters as
+    // much as \n: legacy exports use a bare CR inside addresses.
+    const cell=v=>{
+      let t=v==null?"":String(v);
+      if(/^[=+\-@\t\r]/.test(t)) t="'"+t;
+      return /["\,\n\r]/.test(t)?`"${t.replace(/"/g,'""')}"`:t;
+    };
     const csv=["owner,mailing address,distance in feet"]
       .concat(rows.map(x=>[x.owner&&x.owner!=="nan"?x.owner:"",
                            x.address&&x.address!=="nan"?x.address:"",
