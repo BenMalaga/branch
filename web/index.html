@@ -634,6 +634,18 @@ function gradField(gj){
   for(const c of GRAD) if(fs.some(f=>typeof (f.properties||{})[c]==="number")) return c;
   return null;
 }
+// Columns worth shading by: numeric, varying, and not an identifier or a
+// bookkeeping field the source happened to ship.
+const NOT_A_MEASURE=/^(fid|objectid|oid|id|.*_id|shape_?_?(area|len|length)|globalid)$/i;
+function shadeableFields(gj){
+  const fs=(gj.features||[]).slice(0,500);
+  const seen={};
+  fs.forEach(f=>Object.entries(f.properties||{}).forEach(([k,v])=>{
+    if(typeof v!=="number"||!isFinite(v)||NOT_A_MEASURE.test(k)) return;
+    (seen[k]=seen[k]||new Set()).add(v);
+  }));
+  return Object.keys(seen).filter(k=>seen[k].size>1).sort();
+}
 function addLayer(name,geojson,opts={}){
   const id="ly"+(++seq);
   const L={id,name,geojson,color:opts.color||PALETTE[colorI++%PALETTE.length],
@@ -647,7 +659,10 @@ function addLayer(name,geojson,opts={}){
 function drawLayer(L){
   if(map.getSource(L.id)) return;
   map.addSource(L.id,{type:"geojson",data:L.geojson});
-  const field=gradField(L.geojson); L.field=field;
+  const field=(L.shadeBy===null?null
+              :L.shadeBy!==undefined?L.shadeBy
+              :gradField(L.geojson));
+  L.field=field;
   let col=L.color;
   if(field){
     const v=(L.geojson.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number").sort((a,b)=>a-b);
@@ -677,9 +692,14 @@ function applyOpacity(L){
   if(map.getLayer(L.id+"-line")) map.setPaintProperty(L.id+"-line","line-opacity",o);
   if(map.getLayer(L.id+"-pt")) map.setPaintProperty(L.id+"-pt","circle-opacity",o);
 }
-function removeLayer(L){
+// Take the drawing off the map but keep the layer. drawLayer() bails when the
+// source already exists, so recolouring means tearing the paint down first.
+function removeLayerPaint(L){
   ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s)) map.removeLayer(L.id+s); });
   if(map.getSource(L.id)) map.removeSource(L.id);
+}
+function removeLayer(L){
+  removeLayerPaint(L);
   layers=layers.filter(x=>x!==L);
   renderPanel();
 }
@@ -728,7 +748,16 @@ function layersPanel(){
       +`<div class="lctl"><input type="range" min="0" max="100" value="${Math.round((l.opacity??1)*100)}" data-op="${i}" aria-label="Opacity">`
       +`<button class="btn sm" data-tbl="${i}">Table</button>`
       +`<button class="btn sm" data-chk="${i}">Check</button>`
-      +`<button class="btn sm" data-zoom="${i}">Zoom</button></div>`).join("");
+      +`<button class="btn sm" data-zoom="${i}">Zoom</button></div>`
+      +(()=>{
+        const opts=shadeableFields(l.geojson);
+        if(!opts.length) return "";
+        return `<div class="lctl"><label class="lb" for="sh${i}" style="margin:0">Shade by</label>`
+          +`<select class="field" id="sh${i}" data-shade="${i}" style="flex:1;min-width:0">`
+          +`<option value="">one colour</option>`
+          +opts.map(o=>`<option value="${esc(o)}" ${l.field===o?"selected":""}>${esc(o)}</option>`).join("")
+          +`</select></div>`;
+      })()).join("");
 }
 function dataPanel(){
   return `<h2>Data</h2><p class="sub">Bring your own, or pull free public data for the current view.</p>`
@@ -744,6 +773,11 @@ function wirePanel(){
   el.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>openTool(b.dataset.tool));
   const ex=$("ex"); if(ex) ex.onclick=runExample;
   const f=$("file"); if(f) f.onchange=e=>readFile(e.target.files[0]);
+  el.querySelectorAll("[data-shade]").forEach(sel=>sel.onchange=()=>{
+    const L=layers[+sel.dataset.shade]; if(!L) return;
+    L.shadeBy=sel.value||null;
+    removeLayerPaint(L); drawLayer(L); setVis(L); applyOpacity(L);
+  });
   el.querySelectorAll("[data-vis]").forEach(c=>c.onchange=()=>{
     const L=layers[+c.dataset.vis]; L.visible=c.checked; setVis(L); });
   el.querySelectorAll("[data-op]").forEach(r=>r.oninput=()=>{

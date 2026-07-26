@@ -17,14 +17,16 @@ why), then `branch/registry.py` (every capability lives there).
 **A confident wrong number is the only failure mode that reaches production.**
 
 This product's entire pitch is verified, auditable analysis. A crash gets fixed;
-a plausible wrong answer gets used in a hearing. Three bugs of exactly this shape
-have already shipped and been fixed here:
+a plausible wrong answer gets used in a hearing. Bugs of exactly this shape have
+already shipped and been fixed here:
 
 | Bug | What it did | Fix |
 |---|---|---|
 | Hardcoded `METRIC_CRS = EPSG:32618` | Every area on earth measured in New York's UTM zone. **+47.6% area error in Los Angeles, +56.2% in London.** | `Area.metric_crs` derives the local UTM zone (`config.py`) |
 | NYC tree census queried anywhere | Outside New York it returned zero trees, `shade.py` read that as "no shade anywhere", and CoolWalk returned a confident route built on nothing | `sources.require()` refuses outside a source's real extent |
 | CSV coordinates stripped then parsed | `"notalat"` became `0`, silently placing rows at 0,0 in the Gulf of Guinea | `asCoord()` in `web/index.html` requires an actual number |
+| An Esri extent compared without converting | A service published in Web Mercator or State Plane would pass or fail every coverage check, since metres were compared against degrees | `esri._wgs84_extent()` converts first, and returns `None` rather than guessing at an unknown projection |
+| The web test harness exiting 0 on a crash | A suite that threw reported the passes it managed first, so wiring tests passed vacuously | `tests/web/run.sh` prints `CRASH` and fails; stub selector matches are cached so wiring and clicking touch one object |
 
 The habit that catches these: **test both directions.** A test that only checks
 "it finds the cluster" passes on a tool that calls everything significant. A
@@ -52,7 +54,8 @@ in the ocean. Write the negative test too.
 
 ```
 branch/
-  registry.py    EVERY tool. Typed JSON-Schema contract + run(). Start here.
+  registry.py    EVERY tool (21). Typed JSON-Schema contract + run(). Start here.
+  esri.py        the ArcGIS connector: URL safety, extents, Esri JSON, Hub search
   server.py      Flask: /api/tools, /api/tools/<id>/run, /api/agent, /api/geocode, /api/boundary
   agent.py       tool-calling loop, conversation history, BYO key
   receipts.py    traces every number in an answer back to a tool run
@@ -138,6 +141,25 @@ Verify live with an actual behavioral check, not a string grep. `grep '"boundary
 on `/api/tools` gave a **false positive** once because "boundary" is also a
 parameter name; test for the real tool id.
 
+## Local data, which is where the real value is
+
+OpenStreetMap does not have parcels, zoning, or capital projects. US agencies
+publish those on ArcGIS REST servers, free and key-free, and three tools cover
+that ground:
+
+- `find_data` searches the ArcGIS Hub catalogue and then **probes every result**,
+  because published does not mean open (many need a token) and a "Trenton" layer
+  is often the Trenton in another state. Results are labelled with what was
+  actually found, not what the catalogue claimed.
+- `arcgis` fetches one layer. It counts before downloading, refuses outside the
+  layer's real extent, and converts Esri JSON for servers older than 10.4.
+- `notice_list` builds the abutter list a zoning hearing needs.
+
+`esri.py` fetches a **user-supplied URL from the server**, which is a
+request-forgery hole. It is closed by checking the host resolves to a public
+address AND by not following redirects blindly. Residual risk, documented in the
+module: DNS is resolved twice, so rebinding is not fully closed.
+
 ## Two invariants that are easy to break
 
 **Lineage is by id, never by position.** A layer records what made it in
@@ -146,6 +168,13 @@ the user, so anything that reads lineage must resolve refs by id and emit
 dependencies before dependents (`shareState()` topologically sorts). A share
 link stores positional `{$:index}` only after that sort. Getting this wrong
 corrupts an analysis silently, which is the failure mode that matters here.
+
+**An empty result is a claim, and usually a false one.** `summarize_within` keeps
+areas that contain nothing, at zero, because dropping them makes a choropleth
+that implies every neighbourhood has trees; and it leaves `average` null rather
+than 0, because no trees means there is nothing to average. `_read_fc(fc, what)`
+refuses an empty input by naming which one, before geopandas can fail with a
+message about the `geometry=` keyword.
 
 **A share link re-runs the analysis; it does not carry the answer.** `replayState()`
 calls the tools again. That is the difference between "here is what I got" and
