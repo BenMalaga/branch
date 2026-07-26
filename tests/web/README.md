@@ -1,6 +1,6 @@
 # Frontend checks
 
-These execute `web/next.html`'s real script under a DOM and MapLibre stub, in
+These execute `web/index.html`'s real script under a DOM and MapLibre stub, in
 Node. No browser, no build step.
 
 ```bash

@@ -6,7 +6,7 @@
 set -u
 cd "$(dirname "$0")/../.."
 python3 -c "
-import re;s=open('web/next.html',encoding='utf-8').read()
+import re;s=open('web/index.html',encoding='utf-8').read()
 open('/tmp/next.js','w').write(re.findall(r'<script>(.*?)</script>',s,re.S)[-1])"
 node --check /tmp/next.js || exit 1
 fail=0

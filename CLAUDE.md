@@ -39,11 +39,10 @@ in the ocean. Write the negative test too.
 - **Render free tier**: ~512MB RAM, ephemeral disk (caches vanish on redeploy or
   sleep), cold starts, no persistent DB, no workers, no websockets.
 - **The frontend is ONE vanilla-JS file**, no framework and no build step.
-  MapLibre GL is the only heavy dependency. Keep it that way. There are two:
-  `web/index.html` (the shipped site) and `web/next.html` (the restructured
-  shell, at `/next.html`). **New frontend work goes in `next.html`.** It is
-  ahead: customisable layout, the assistant as a conversation that can act on
-  the workspace, history, audit, share links, interrogable overlays.
+  MapLibre GL is the only heavy dependency. Keep it that way. `web/index.html`
+  is the product. `web/classic.html` is the previous shell, kept at
+  `/classic.html` as a fallback while the redesign settles; it is frozen, so do
+  not add features to it.
 - **No em-dashes and no emojis anywhere** (founder-locked, applies to code
   comments, copy, and commit messages).
 - **Never invent data.** If a source lacks a field or does not cover the ground,
@@ -65,8 +64,8 @@ branch/
   config.py      Area, and Area.metric_crs (the local UTM zone)
   shade/solar/routing/pipeline.py   the CoolWalk shade-routing engine
   raster/ml/hazard/sqldb/export/arcgis_export.py   analytics + interop
-web/index.html   the shipped frontend
-web/next.html    the restructured shell, served at /next.html
+web/index.html   the whole frontend
+web/classic.html the previous shell, frozen, served at /classic.html
 tests/           pytest, 65 tests
 tests/web/       43 frontend checks, run with ./tests/web/run.sh
 ```
@@ -109,7 +108,7 @@ node -e "require('/tmp/stub.js'); (0,eval)(require('fs').readFileSync('/tmp/app.
 This is now a committed harness rather than something to rebuild each time:
 
 ```bash
-./tests/web/run.sh        # 43 checks against web/next.html
+./tests/web/run.sh        # 43 checks against web/index.html
 ```
 
 Read `tests/web/README.md` before adding to it. The stub lives in

@@ -1,0 +1,1850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>branch (previous layout)</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="branch is free, open-source city-planning analysis with an audit trail: cost, value-per-acre, ROI, walksheds, heat and equity, computed from free public data in your browser. Sits beside ArcGIS. Bring your own AI key or a free local model.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 106 106'%3E%3Crect x='26' y='6' width='24' height='100' rx='8' fill='%238ed3a6'/%3E%3Cpath d='M40 34C46 22 65 5 82 3C75 19 51 50 40 54Z' fill='%238ed3a6' stroke='%238ed3a6' stroke-width='5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="branch">
+<meta property="og:title" content="branch - free city-planning analysis with an audit trail">
+<meta property="og:description" content="Cost, value per acre, ROI, walksheds, heat and equity, computed from free public data in your browser. Open source, and it sits beside ArcGIS.">
+<meta property="og:url" content="https://planwithbranch.com/classic.html">
+<meta property="og:image" content="https://planwithbranch.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="branch: free city-planning analysis with an audit trail">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="branch - free city-planning analysis with an audit trail">
+<meta name="twitter:description" content="Cost, value per acre, ROI, walksheds, heat and equity, computed from free public data in your browser. Open source, and it sits beside ArcGIS.">
+<meta name="twitter:image" content="https://planwithbranch.com/og.png">
+<meta name="theme-color" content="#0e1311">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/pmtiles@3.0.6/dist/pmtiles.js"></script>
+<style>
+  :root{
+    --bg:#0e1311;--panel:#121814;--header:#0f1412;--rail:#0d1210;--line:#232c26;--line2:#2d3730;
+    --ink:#eaf0ec;--muted:#98a49d;--faint:#7a877f;--field:#161d18;
+    --accent:#8ed3a6;--accent-2:#a6dcb8;--accent-ink:#0a2c1b;--accent-soft:rgba(142,211,166,.12);
+    --blue:#6fa8e8;--amber:#e6c07b;--red:#e88a6a;
+    --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --surface:#18201b;--surface-2:#141b16;--surface-3:#181f1a;--surface-hover:#1e271f;
+    --line3:#31413a;--line4:#37473f;--line-tool:#3a4a41;--spin-track:#263029;--err-ink:#eab29f;
+    --ramp-lo:#14402a;--ramp-mid:#4bab72;--ramp-hi:#b7e4c7;
+    --ease:cubic-bezier(.22,1,.36,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--ui);background:var(--bg);color:var(--ink);overflow:hidden;-webkit-font-smoothing:antialiased}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
+  button{font-family:var(--ui);cursor:pointer;color:inherit}
+
+  /* header + logo */
+  #top{height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 16px 0 14px;background:var(--header);border-bottom:1px solid var(--line);position:relative;z-index:20}
+  .brand{display:flex;align-items:baseline;gap:12px;min-width:0}
+  .wm{display:inline-flex;align-items:baseline;font-size:22px;font-weight:700;letter-spacing:-.025em;color:var(--ink);line-height:1}
+  .wm .tr{width:.445em;height:.562em;align-self:baseline;margin:0 .012em}
+  .tr .g{fill:var(--accent)}
+  .tr .lf{stroke:var(--accent);stroke-width:5;stroke-linejoin:round;stroke-linecap:round}
+  .tag{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:450}
+  #top nav{display:flex;gap:8px;flex:none}
+  .nbtn{display:inline-flex;align-items:center;gap:7px;height:33px;padding:0 12px;font-size:12.5px;color:var(--ink);text-decoration:none;background:transparent;border:1px solid var(--line);border-radius:9px;transition:background .15s var(--ease),border-color .15s var(--ease)}
+  .nbtn:hover{background:var(--surface);border-color:var(--line3)}
+  .nbtn svg{width:14px;height:14px;opacity:.85}
+
+  #app{display:flex;height:calc(100vh - 54px)}
+  /* icon rail */
+  #rail{width:70px;flex:none;background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:8px 0;gap:2px}
+  .rb{width:100%;height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:none;border:none;color:var(--faint);font-size:10.5px;letter-spacing:.02em;transition:color .15s var(--ease),background .15s var(--ease);position:relative}
+  .rb svg{width:21px;height:21px}
+  .rb:hover{color:var(--muted)}
+  .rb.on{color:var(--accent)}
+  .rb.on::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:2.5px;border-radius:0 3px 3px 0;background:var(--accent)}
+
+  #panel{width:330px;flex:none;display:flex;flex-direction:column;min-width:0;background:var(--panel);border-right:1px solid var(--line)}
+  #body{flex:1;overflow-y:auto;overflow-x:hidden;padding:18px;min-width:0}
+  #mapwrap{flex:1;position:relative;min-width:0}
+  #map{position:absolute;inset:0}
+
+  h3{font-size:16px;font-weight:650;letter-spacing:-.01em;color:var(--ink);margin:0 0 4px}
+  .sub{font-size:12.5px;color:var(--muted);line-height:1.55;margin:0 0 16px}
+  .cat{font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);margin:20px 0 8px;font-weight:600}
+  .field{width:100%;height:37px;padding:0 12px;font-size:13px;color:var(--ink);background:var(--field);border:1px solid var(--line2);border-radius:10px;font-family:var(--ui);transition:border-color .15s var(--ease)}
+  .field:focus{border-color:var(--accent)}
+  .field:focus:not(:focus-visible){outline:none}
+  .req{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);font-weight:600}
+  textarea.field{height:auto;padding:10px 12px;resize:vertical;min-height:76px;line-height:1.5}
+  select.field{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 15px) 16px,calc(100% - 10px) 16px;background-size:5px 5px;background-repeat:no-repeat}
+  label.lb{display:block;font-size:12px;color:var(--muted);margin:13px 0 5px}
+  label.lb b{color:var(--ink);font-weight:600}
+  .btn{height:37px;padding:0 14px;font-size:13px;background:var(--surface);color:var(--ink);border:1px solid var(--line2);border-radius:10px;transition:background .15s var(--ease),border-color .15s var(--ease)}
+  .btn:hover{background:var(--surface-hover);border-color:var(--line4)}
+  .btn.pri{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+  .btn.pri:hover{background:var(--accent-2)}
+  .btn.wide{width:100%}
+  .btn:disabled,.field:disabled{opacity:.5;cursor:not-allowed}
+  .btn:disabled:hover{background:var(--surface);border-color:var(--line2)}
+  .row{display:flex;gap:8px}
+
+  #thread{max-height:46vh;overflow-y:auto;margin:0 0 14px;border-radius:12px}
+  #thread:empty{display:none}
+  #thread.drop{outline:2px dashed var(--accent);outline-offset:3px}
+  .msg{font-size:13px;line-height:1.55;margin:10px 0;padding:11px 13px;border-radius:12px}
+  .receipt{margin-top:9px;padding:8px 10px;border-radius:9px;font-size:11.5px;line-height:1.5}
+  .receipt.ok{background:rgba(142,211,166,.1);border:1px solid rgba(142,211,166,.28);color:var(--muted)}
+  .receipt.warn{background:rgba(230,192,123,.1);border:1px solid rgba(230,192,123,.32);color:var(--amber)}
+  .receipt .rsub{color:var(--muted);margin:3px 0 5px}
+  .orphan{margin-top:4px;padding-left:8px;border-left:2px solid rgba(230,192,123,.45)}
+  .orphan b{color:var(--amber);display:inline-block;margin-right:6px}
+  .orphan span{color:var(--muted);font-style:italic}
+  .stepn{color:var(--accent);font-size:10.5px}
+  .steps{margin-top:8px}
+  .steps summary{font-size:11px;color:var(--faint);cursor:pointer}
+  .steps summary:hover{color:var(--muted)}
+  .stepline{margin-top:5px;font-size:11px;color:var(--muted);line-height:1.45}
+  .stepline b{color:var(--ink);font-weight:600;display:block}
+  .stepline span{font-family:var(--mono);font-size:10.5px;word-break:break-word}
+  .msg.you{background:var(--surface-3);border:1px solid var(--line)}
+  .msg.branch{background:var(--accent-soft);border:1px solid rgba(142,211,166,.22)}
+  .recipe{margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+  .err{background:rgba(232,138,106,.1);border:1px solid rgba(232,138,106,.3);color:var(--err-ink)}
+
+  .report{border:1px solid var(--line2);border-radius:12px;padding:13px;margin-bottom:16px;background:var(--surface-2)}
+  .report .rhead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13.5px;margin-bottom:2px}
+  .rsec{padding:10px 0;border-top:1px solid var(--line)}
+  .rsec .rsech{font-size:12px;font-weight:600;color:var(--accent)}
+  .rsec .recrows{margin-top:5px}
+  .rfoot{margin-top:6px;font-size:10.5px;color:var(--faint);line-height:1.4}
+  .rbreak{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .rbreak span{font-size:10.5px;color:var(--muted);background:var(--surface);border:1px solid var(--line);
+    border-radius:6px;padding:2px 7px;text-transform:capitalize}
+  .rbreak b{color:var(--ink);font-weight:600}
+  .rnote{margin-top:10px;font-size:10.5px;color:var(--faint);line-height:1.45}
+  table.prof{width:100%;border-collapse:collapse;font-size:11.5px}
+  table.prof th{text-align:left;color:var(--faint);font-weight:600;padding:4px 6px 4px 0;border-bottom:1px solid var(--line)}
+  table.prof td{padding:4px 6px 4px 0;border-bottom:1px solid rgba(35,44,38,.6);color:var(--muted);vertical-align:top}
+  table.prof td:first-child{color:var(--ink)}
+  table.prof td.warn{color:var(--amber)}
+  .sv{padding:11px 0;border-bottom:1px solid var(--line)}
+  .sv input.nm{width:100%;background:none;border:1px solid transparent;border-radius:7px;color:var(--ink);
+    font:inherit;font-size:13px;font-weight:600;padding:3px 6px}
+  .sv input.nm:hover{border-color:var(--line2)}
+  .sv input.nm:focus{border-color:var(--accent);background:var(--field);outline:none}
+  .svmeta{font-size:11px;color:var(--faint);margin:2px 0 6px 6px}
+  .astep{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .astep:last-of-type{border-bottom:none}
+  .anum{flex:none;width:21px;height:21px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .anm{font-size:12.5px;font-weight:600}
+  .ahow{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:2px;word-break:break-word}
+  .vout{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+  .vhead{padding-bottom:11px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+  .vlab{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+  .vbig{font-size:26px;font-weight:650;letter-spacing:-.02em;margin-top:3px}
+  .vrow{display:flex;justify-content:space-between;gap:14px;padding:7px 0;font-size:12.5px;color:var(--muted);border-bottom:1px solid rgba(35,44,38,.6)}
+  .vrow:last-of-type{border-bottom:none}
+  .vrow b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .vrec{margin-top:10px}
+  .vrec summary{font-size:11.5px;color:var(--faint);cursor:pointer}
+  .vrec summary:hover{color:var(--muted)}
+  .back{display:inline-flex;align-items:center;gap:6px;margin:0 0 12px;padding:5px 9px;font-size:12px;
+    color:var(--muted);background:none;border:1px solid var(--line);border-radius:8px}
+  .back:hover{color:var(--ink);border-color:var(--line2)}
+  .tool{padding:11px 12px;border:1px solid var(--line);border-radius:11px;margin-bottom:8px;cursor:pointer;transition:border-color .15s var(--ease),background .15s var(--ease)}
+  .tool:hover{border-color:var(--line-tool);background:var(--surface-2)}
+  .tool .tt{font-size:13px;font-weight:600}
+  .tool .td{font-size:11.5px;color:var(--muted);line-height:1.45;margin-top:3px}
+  .badge{float:right;font-family:var(--mono);font-size:9.5px;color:var(--faint);border:1px solid var(--line2);border-radius:6px;padding:1px 6px;margin-left:8px}
+
+  .layer{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+  .dot{width:14px;height:14px;border-radius:4px;flex:none;padding:0;border:1px solid var(--line2);
+    background:none;cursor:pointer;appearance:none}
+  .dot::-webkit-color-swatch-wrapper{padding:0}
+  .dot::-webkit-color-swatch{border:none;border-radius:3px}
+  .dot::-moz-color-swatch{border:none;border-radius:3px}
+  .layer input.nm{flex:1;min-width:0;background:none;border:1px solid transparent;border-radius:7px;
+    color:var(--ink);font:inherit;font-size:12.5px;padding:3px 6px;text-overflow:ellipsis}
+  .layer input.nm:hover{border-color:var(--line2)}
+  .layer input.nm:focus{border-color:var(--accent);background:var(--field);outline:none}
+  .layer input{accent-color:var(--accent)}
+  .layer .x{color:var(--faint);border:none;background:none;font-size:16px;line-height:1}
+  .layer .dl{color:var(--faint);border:none;background:none;padding:2px;line-height:0;border-radius:7px}
+  .layer .dl svg{width:15px;height:15px}
+  .layer .dl:hover{color:var(--accent)}
+  .layer .x:hover{color:var(--ink)}
+  .lctl{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 12px 22px}
+  .lctl input[type=range]{flex:1 1 100%;min-width:0}
+  .lctl input[type=range]{accent-color:var(--accent);height:16px}
+  .lctl button{padding:3px 8px;font-size:11px;color:var(--muted);background:none;border:1px solid var(--line);border-radius:7px}
+  .lctl button:hover:not(:disabled){color:var(--ink);border-color:var(--line2)}
+  .lctl button:disabled{opacity:.35;cursor:not-allowed}
+  .legend{margin:1px 0 11px 22px}
+  .legend .lgtop{color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;margin-bottom:4px}
+  .legend .lgbar{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--ramp-lo),var(--ramp-mid),var(--ramp-hi))}
+  .legend .lgsteps{display:flex;height:8px;border-radius:4px;overflow:hidden}
+  .legend .lgsteps span{flex:1}
+  .legend .lgstat{margin-top:4px;font-size:10.5px;color:var(--faint)}
+  .legend .lgends{display:flex;justify-content:space-between;margin-top:3px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .empty{font-size:12.5px;color:var(--faint);text-align:center;padding:34px 12px;line-height:1.65}
+  .empty svg{width:30px;height:30px;opacity:.5;margin-bottom:10px}
+
+  .mapctl{position:absolute;z-index:5;background:rgba(14,19,17,.9);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:11px}
+  #search{top:14px;left:14px;width:320px;max-width:calc(100% - 96px);display:flex;align-items:center;padding-left:12px}
+  #search svg{width:15px;height:15px;color:var(--faint);flex:none}
+  #search input{flex:1;height:40px;padding:0 12px;background:none;border:none;color:var(--ink);font-size:13px;font-family:var(--ui)}
+  #search input:focus{outline:none}
+  #search:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+  #overlays{top:58px;right:14px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;padding:6px;max-width:min(330px,calc(100% - 28px))}
+  #overlays button{padding:5px 10px;font-size:11.5px;color:var(--muted);background:none;border:1px solid transparent;border-radius:8px;white-space:nowrap}
+  #overlays button:hover{color:var(--ink);border-color:var(--line2)}
+  #overlays button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
+  #basemaps{top:14px;right:14px;display:flex;overflow:hidden;padding:3px}
+  #basemaps button{padding:6px 12px;font-size:11.5px;color:var(--muted);background:none;border:none;border-radius:8px}
+  #basemaps button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
+  #draw{bottom:16px;left:14px;display:flex;overflow:hidden;padding:3px}
+  #draw button{padding:7px 11px;font-size:11.5px;color:var(--muted);background:none;border:none;border-radius:8px}
+  #draw button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
+  #ac{position:absolute;z-index:8;background:var(--panel);border:1px solid var(--line2);border-radius:11px;overflow:hidden;box-shadow:0 14px 34px rgba(0,0,0,.5)}
+  .aci{display:flex;align-items:center;gap:8px;padding:9px 13px;font-size:12px;border-top:1px solid var(--line);line-height:1.4;cursor:pointer}
+  .aci .acl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .aci .ack{flex:none;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);white-space:nowrap}
+  .aci .acb{flex:none;padding:3px 8px;font-size:10.5px;color:var(--accent-ink);background:var(--accent);border:none;border-radius:6px;font-weight:600;white-space:nowrap;cursor:pointer}
+  .aci .acb:hover{background:var(--accent-2)}
+  .aci:first-child{border-top:none}
+  .aci:hover{background:var(--surface)}
+  .maplibregl-popup-content{background:var(--panel);color:var(--ink);border:1px solid var(--line2);
+    border-radius:12px;font-family:var(--ui);font-size:12.5px;max-width:290px;padding:12px 14px}
+  .maplibregl-popup-close-button{color:var(--faint);font-size:16px;padding:2px 7px}
+  .maplibregl-popup-close-button:hover{color:var(--ink);background:none}
+  .rec .rectop{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint)}
+  .rec .recname{font-size:14px;font-weight:600;margin-top:2px;line-height:1.3}
+  .rec .reckind{font-size:11.5px;color:var(--accent);margin-top:1px;text-transform:capitalize}
+  .rec .rechead{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+    margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+  .rec .rechead span{font-size:11.5px;color:var(--muted)}
+  .rec .rechead b{font-size:16px;font-variant-numeric:tabular-nums}
+  .recrows{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;margin:9px 0 0;align-items:baseline}
+  .recrows dt{font-size:11.5px;color:var(--muted);min-width:0;overflow-wrap:anywhere}
+  .recrows dd{margin:0;font-size:11.5px;color:var(--ink);text-align:right;
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .maplibregl-popup-tip{border-top-color:var(--panel)!important;border-bottom-color:var(--panel)!important}
+  .maplibregl-ctrl-attrib{background:rgba(14,19,17,.7)!important}
+  .maplibregl-ctrl-attrib a{color:var(--muted)!important}
+
+  dialog{max-width:470px;width:calc(100vw - 32px);border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);padding:0;box-shadow:0 24px 64px rgba(0,0,0,.55)}
+  dialog::backdrop{background:rgba(6,10,8,.66);backdrop-filter:blur(3px)}
+  #coords{bottom:16px;right:120px;padding:5px 9px;font-family:var(--mono);font-size:11px;color:var(--muted);pointer-events:none}
+  @media (max-width:820px){#coords{display:none}}
+  #tablewrap[hidden]{display:none}
+  #tablewrap{position:absolute;left:0;right:0;bottom:0;z-index:6;max-height:44%;display:flex;flex-direction:column;
+    background:var(--panel);border-top:1px solid var(--line2);box-shadow:0 -14px 34px rgba(0,0,0,.42)}
+  #tablewrap .thead{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:13px}
+  #tablewrap .thead .tcount{color:var(--muted);font-size:11.5px;flex:1}
+  #tablewrap .thead .btn{height:28px;padding:0 10px;font-size:11.5px}
+  #tablewrap .tscroll{overflow:auto}
+  #tablewrap table{border-collapse:collapse;width:100%;font-size:12px}
+  #tablewrap th{position:sticky;top:0;background:var(--surface-2);color:var(--muted);text-align:left;
+    padding:7px 10px;border-bottom:1px solid var(--line2);cursor:pointer;white-space:nowrap;font-weight:600}
+  #tablewrap th:hover{color:var(--ink)}
+  #tablewrap td{padding:6px 10px;border-bottom:1px solid rgba(35,44,38,.7);white-space:nowrap;
+    max-width:280px;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+  #tablewrap tbody tr{cursor:pointer}
+  #tablewrap tbody tr:hover{background:var(--surface)}
+  #tablewrap tbody tr.sel{background:var(--accent-soft)}
+  #timebar[hidden]{display:none}
+  #timebar{bottom:58px;left:14px;right:auto;display:flex;align-items:center;gap:10px;padding:8px 12px;max-width:min(430px,calc(100% - 28px))}
+  #timebar .tlab{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);white-space:nowrap}
+  #timebar input[type=range]{flex:1;min-width:120px;accent-color:var(--accent);height:20px}
+  #timebar .tdate{font-family:var(--mono);font-size:12px;color:var(--ink);min-width:74px;text-align:right}
+  #dhint{bottom:58px;left:14px;max-width:290px;padding:7px 11px;font-size:11.5px;color:var(--muted);line-height:1.45}
+  @media (max-width:820px){
+    #dhint{bottom:56px}}
+  @media (pointer:coarse){
+    #basemaps button,#draw button{min-height:44px;padding-left:14px;padding-right:14px}
+    .layer .x,.layer .dl{min-width:44px;min-height:44px}}
+  .dh{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .dh h3{margin:0;font-size:15px}
+  .db{padding:18px 20px;max-height:74vh;overflow-y:auto}
+  .dx{background:none;border:none;color:var(--muted);font-size:22px;line-height:1}
+  .dx:hover{color:var(--ink)}
+  .loading{position:absolute;inset:0;z-index:9;display:none;align-items:center;justify-content:center;flex-direction:column;gap:13px;background:rgba(14,19,17,.6);backdrop-filter:blur(2px);color:var(--muted);font-size:13px}
+  .loading.on{display:flex}
+  .spin{width:26px;height:26px;border-radius:50%;border:2.5px solid var(--spin-track);border-top-color:var(--accent);animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spin{animation:none}*{transition:none!important}}
+  @media (max-width:820px){body{overflow:auto}#app{flex-direction:column;height:auto}#rail{flex-direction:row;width:100%;height:auto}#rail .rb{height:54px;flex:1}#rail .rb.on::before{left:12px;right:12px;top:auto;bottom:0;width:auto;height:2.5px}#panel{width:100%}#mapwrap{height:56vh;min-height:360px}.tag{display:none}
+    #search{left:14px;right:14px;width:auto;max-width:none}
+    #basemaps{top:66px;right:14px}
+    #overlays{top:110px;right:14px;left:14px;max-width:none}
+    #draw{bottom:14px;left:14px}}
+</style>
+</head>
+<body>
+<header id="top">
+  <div class="brand">
+    <span class="wm">b<svg class="tr" viewBox="0 0 84 106" aria-label="r"><rect class="g" x="15" y="6" width="24" height="100" rx="8"/><path class="g lf" d="M29 34C35 22 54 5 71 3C64 19 40 50 29 54Z"/></svg>anch</span>
+    <span class="tag">free, verified city-planning analysis</span>
+  </div>
+  <nav>
+    <button class="nbtn" id="setBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 2.4a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1L9.5 21h5l.3-2.4a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6a7 7 0 0 0 .1-1Z"/></svg>AI settings</button>
+    <a class="nbtn" href="https://github.com/BenMalaga/branch" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5A10.5 10.5 0 0 0 8.7 22c.5.1.7-.2.7-.5v-1.8c-2.9.6-3.5-1.4-3.5-1.4-.5-1.2-1.2-1.5-1.2-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.7-1.2-4.7-5.1 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.7.7 1 1.6 1 2.7 0 3.9-2.3 4.8-4.6 5.1.4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.5 10.5 0 0 0 12 1.5Z"/></svg>GitHub</a>
+  </nav>
+</header>
+
+<main id="app">
+  <nav id="rail">
+    <button class="rb on" data-t="ask"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18 14l.8 2.2L21 17l-2.2.8L18 20l-.8-2.2L15 17l2.2-.8z"/></svg>Ask</button>
+    <button class="rb" data-t="tools"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h7M15 17h5"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="17" r="2"/></svg>Tools</button>
+    <button class="rb" data-t="layers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>Layers</button>
+    <button class="rb" data-t="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Data</button>
+    <button class="rb" data-t="saved"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M6 3h12a1 1 0 0 1 1 1v16l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>Saved</button>
+  </nav>
+  <aside id="panel"><div id="body"><section id="p-ask" hidden></section><section id="p-tools" hidden></section><section id="p-layers" hidden></section><section id="p-data" hidden></section><section id="p-saved" hidden></section></div></aside>
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div id="search" class="mapctl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input id="q" placeholder="Search an address or place..." autocomplete="off"></div>
+    <div id="overlays" class="mapctl" aria-label="Map overlays"></div>
+    <div id="basemaps" class="mapctl"><button data-b="dark" class="on">Dark</button><button data-b="street">Street</button><button data-b="satellite">Satellite</button><button data-b="history">History</button></div>
+    <div id="draw" class="mapctl"><button data-d="point">Point</button><button data-d="line">Line</button><button data-d="polygon">Area</button><button id="dfin" hidden>Finish</button><button data-d="clear">Clear</button></div>
+    <div id="dhint" class="mapctl" role="status" aria-live="polite" hidden></div>
+    <div id="coords" class="mapctl"></div>
+    <div id="tablewrap" hidden></div>
+    <div id="timebar" class="mapctl" hidden>
+      <label for="tslider" class="tlab">Imagery date</label>
+      <input type="range" id="tslider" min="0" max="0" step="1" value="0">
+      <output id="tdate" class="tdate" for="tslider"></output>
+    </div>
+    <div class="loading" id="loading" role="status" aria-live="polite"><div class="spin"></div><div id="loadmsg">Working...</div></div>
+  </div>
+</main>
+
+<div id="ac" hidden></div>
+
+<dialog id="settings">
+  <div class="dh"><h3>AI settings</h3><button class="dx" onclick="settings.close()" aria-label="Close settings">&times;</button></div>
+  <div class="db">
+    <p class="sub" style="margin:0 0 4px">branch's agent calls verified tools. Use your own key (never stored on any server, only in this browser) or a free local model, so your data stays yours.</p>
+    <label class="lb">Provider</label>
+    <select class="field" id="prov"><option value="anthropic">Anthropic (your key)</option><option value="openai">OpenAI (your key)</option><option value="ollama">Ollama (only if you run branch yourself)</option></select>
+    <label class="lb">Model</label>
+    <input class="field" id="model" placeholder="claude-sonnet-4-5">
+    <label class="lb" id="keyLb">API key</label>
+    <input class="field" id="key" type="password" placeholder="sk-...">
+    <div class="row" style="margin-top:18px"><button class="btn pri wide" onclick="saveSettings()">Save</button></div>
+  </div>
+</dialog>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const PALETTE=["#8ed3a6","#6fa8e8","#e6c07b","#e88a6a","#b9a1f0","#7fd6d6","#e79ac0"];
+const BG="#0e1311";
+const ACCENT="#8ed3a6";
+let map, layers=[], layerSeq=0, colorI=0, tools=[], drawMode=null, drawPts=[], pickTarget=null, curBasemap="dark";
+
+const BASEMAPS={
+  dark:{tiles:["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"],attr:"&copy; OpenStreetMap &copy; CARTO"},
+  street:{tiles:["https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png"],attr:"&copy; OpenStreetMap &copy; CARTO"},
+  satellite:{tiles:["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],attr:"&copy; Esri, Maxar, Earthstar Geographics"},
+  history:{tiles:["https://wayback.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/WMTS/1.0.0/default028mm/MapServer/tile/64776/{z}/{y}/{x}"],attr:"&copy; Esri, Maxar, Earthstar Geographics (Wayback)"},
+};
+function baseStyle(b){return {version:8,sources:{base:{type:"raster",tiles:BASEMAPS[b].tiles,tileSize:256,attribution:BASEMAPS[b].attr}},layers:[{id:"base",type:"raster",source:"base"}]};}
+
+function init(){
+  if(window.pmtiles&&maplibregl.addProtocol) maplibregl.addProtocol("pmtiles",new pmtiles.Protocol().tile);
+  map=new maplibregl.Map({container:"map",style:baseStyle("dark"),center:[-73.98,40.672],zoom:13});
+  map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),"bottom-right");
+  map.addControl(new maplibregl.ScaleControl({maxWidth:110,unit:"imperial"}),"bottom-left");
+  map.on("mousemove",e=>{
+    const el=$("coords");
+    if(el) el.textContent=`${e.lngLat.lat.toFixed(5)}, ${e.lngLat.lng.toFixed(5)}`;
+  });
+  new ResizeObserver(()=>map.resize()).observe($("mapwrap"));
+  map.on("style.load",restyleLayers);
+  map.on("click",onMapClick);
+  map.doubleClickZoom.disable();
+  wireTabs(); wireBasemaps(); wireDraw(); wireSearch(); wireSettings(); renderOverlayBar();
+  loadTools().then(()=>{ if(getTab()==="tools")showTab("tools"); });
+  showTab("ask");
+  const shared=(location.hash.match(/[#&]s=([^&]+)/)||[])[1];
+  if(shared){
+    let st=null;
+    try{ st=JSON.parse(unb64(shared)); }catch(e){ st=null; }
+    if(st) map.once("load",()=>replayState(st));
+  }
+}
+
+// ---------- layers ----------
+// MapLibre throws "Style is not done loading" if you touch layers while a style
+// is still settling, which silently lost results on slower connections. Anything
+// that mutates the map goes through here.
+function onStyleReady(fn){
+  try{ if(map&&map.isStyleLoaded&&map.isStyleLoaded()){ fn(); return; } }catch(e){}
+  map.once("idle",()=>{ try{ fn(); }catch(e){} });
+}
+function addLayer(name,geojson,opts={}){
+  const id="ly"+Date.now()+Math.floor(Math.random()*1e4);
+  const color=opts.color||PALETTE[colorI++%PALETTE.length];
+  const L={id,name,geojson,color,visible:true,opacity:1,seq:++layerSeq,src:opts.src||null};
+  layers.unshift(L);
+  onStyleReady(()=>{
+    drawLayer(L); applyOrder();
+    if(opts.fit!==false) fitTo(geojson);
+    if(getTab()==="layers") showTab("layers");
+  });
+  return L;
+}
+// choropleth: color features by a numeric value where one exists
+const GRAD_FIELDS=["value_per_acre","tax_per_acre","count","suitability","score","reach_acres"];
+function numericFields(gj){
+  const fs=gj.features||[], out=[];
+  fs.slice(0,300).forEach(f=>Object.entries(f.properties||{}).forEach(([k,v])=>{
+    if(typeof v==="number"&&isFinite(v)&&!out.includes(k)) out.push(k);
+  }));
+  return out;
+}
+function gradField(gj){
+  const nums=numericFields(gj);
+  return GRAD_FIELDS.find(c=>nums.includes(c)) || nums[0] || null;   // any number beats none
+}
+const RAMP=["#14402a","#22553a","#317f52","#4bab72","#7cc796","#b7e4c7"];
+// Land value and density are heavily right-skewed: a linear ramp paints almost
+// everything the darkest shade and hides the finding. Quantile breaks put an
+// equal share of features in each colour, which is what makes the map readable.
+function quantileBreaks(values,n){
+  const v=[...values].sort((a,b)=>a-b), out=[];
+  for(let i=1;i<n;i++){
+    const q=v[Math.floor(i*v.length/n)];
+    if(out.length===0||q>out[out.length-1]) out.push(q);   // strictly ascending, or MapLibre throws
+  }
+  return out;
+}
+function gradColor(field,gj){
+  const v=(gj.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number"&&isFinite(x));
+  if(!v.length) return RAMP[3];
+  const breaks=quantileBreaks(v,RAMP.length);
+  if(!breaks.length) return RAMP[3];                        // every value identical
+  const expr=["step",["get",field],RAMP[0]];
+  breaks.forEach((b,i)=>expr.push(b,RAMP[Math.min(i+1,RAMP.length-1)]));
+  return expr;
+}
+function fieldStats(values){
+  const v=[...values].sort((a,b)=>a-b), n=v.length;
+  const mid=Math.floor(n/2);
+  return {n, lo:v[0], hi:v[n-1],
+          median:n%2?v[mid]:(v[mid-1]+v[mid])/2,
+          mean:v.reduce((a,b)=>a+b,0)/n};
+}
+const FIELD_LABEL={value_per_acre:"value / acre",tax_per_acre:"tax / acre",count:"count",suitability:"suitability",score:"score",reach_acres:"reach (acres)"};
+function fmtVal(field,n){ if(n==null||isNaN(n))return "-"; const money=field==="value_per_acre"||field==="tax_per_acre"; const a=Math.abs(n); let s; if(a>=1e6)s=(n/1e6).toFixed(1).replace(/\.0$/,"")+"M"; else if(a>=1e3)s=(n/1e3).toFixed(1).replace(/\.0$/,"")+"k"; else s=(Math.round(n*10)/10).toString(); return money?"$"+s:s; }
+function drawLayer(L){
+  if(map.getSource(L.id)) return;
+  map.addSource(L.id,{type:"geojson",data:L.geojson});
+  const field=gradField(L.geojson); L.field=field;
+  if(field){
+    const gv=(L.geojson.features||[]).map(f=>f.properties[field]).filter(x=>typeof x==="number"&&isFinite(x));
+    if(gv.length){ L.stats=fieldStats(gv); L.lo=L.stats.lo; L.hi=L.stats.hi; L.breaks=quantileBreaks(gv,RAMP.length); }
+  }
+  const col=field?gradColor(field,L.geojson):L.color;
+  map.addLayer({id:L.id+"-fill",source:L.id,type:"fill",filter:["==","$type","Polygon"],paint:{"fill-color":col,"fill-opacity":field?0.6:0.22}});
+  map.addLayer({id:L.id+"-line",source:L.id,type:"line",filter:["!=","$type","Point"],paint:{"line-color":field?"#0e1311":L.color,"line-width":field?0.6:2.5}});
+  map.addLayer({id:L.id+"-pt",source:L.id,type:"circle",filter:["==","$type","Point"],paint:{"circle-radius":field?6:5,"circle-color":col,"circle-stroke-width":1.2,"circle-stroke-color":BG}});
+  ["-fill","-line","-pt"].forEach(s=>map.on("click",L.id+s,e=>recordPopup(e,L)));
+}
+function restyleLayers(){ restoreOverlays(); layers.forEach(L=>{ drawLayer(L); setVis(L); applyOpacity(L); }); applyOrder(); addDrawPreviewLayers(); drawPreview();
+  if(curBasemap==="history"&&waybackIdx!=null) applyRelease(waybackIdx); }
+// Opacity multiplies the layer's own base value, which differs for a choropleth
+// fill, so it dims rather than flattening the styling.
+function applyOpacity(L){
+  const o=L.opacity==null?1:L.opacity;
+  const fillBase=L.field?0.6:0.22;
+  if(map.getLayer(L.id+"-fill")) map.setPaintProperty(L.id+"-fill","fill-opacity",fillBase*o);
+  if(map.getLayer(L.id+"-line")) map.setPaintProperty(L.id+"-line","line-opacity",o);
+  if(map.getLayer(L.id+"-pt")) map.setPaintProperty(L.id+"-pt","circle-opacity",o);
+}
+// layers[0] is the newest and draws on top; the panel reads the same way.
+function applyOrder(){
+  try{
+    for(let i=layers.length-1;i>=0;i--)
+      ["-fill","-line","-pt"].forEach(sx=>{ if(map.getLayer(layers[i].id+sx)) map.moveLayer(layers[i].id+sx); });
+    ["tblsel-line","tblsel-pt","drawprev-line","drawprev-pt"].forEach(id=>{ if(map.getLayer(id)) map.moveLayer(id); });
+  }catch(e){}   // a style swap mid-reorder is not worth failing the whole action for
+}
+window.moveLayer=(i,dir)=>{
+  const j=i+dir;
+  if(j<0||j>=layers.length) return;
+  [layers[i],layers[j]]=[layers[j],layers[i]];
+  applyOrder(); showTab("layers");
+};
+window.zoomToLayer=i=>{ const L=layers[i]; if(L) fitTo(L.geojson); };
+window.soloLayer=i=>{
+  const only=layers.filter((_,n)=>n!==i).every(l=>!l.visible);   // already solo: restore all
+  layers.forEach((l,n)=>{ l.visible=only?true:(n===i); setVis(l); });
+  showTab("layers");
+};
+window.setLayerColor=(i,v)=>{
+  const L=layers[i]; if(!L) return;
+  L.color=v;
+  if(!L.field){ if(map.getLayer(L.id+"-fill")) map.setPaintProperty(L.id+"-fill","fill-color",v);
+                if(map.getLayer(L.id+"-pt")) map.setPaintProperty(L.id+"-pt","circle-color",v); }
+  if(map.getLayer(L.id+"-line")) map.setPaintProperty(L.id+"-line","line-color",L.field?"#0e1311":v);
+  const dot=document.querySelector(`.layer .dot[data-i="${i}"]`);
+  if(dot) dot.style.background=v;
+};
+window.duplicateLayer=i=>{
+  const L=layers[i]; if(!L) return;
+  const copy=addLayer(L.name+" copy",JSON.parse(JSON.stringify(L.geojson)),{fit:false,src:L.src?{...L.src}:null});
+  copy.opacity=L.opacity;
+  showTab("layers");
+};
+window.setLayerOpacity=(i,v)=>{ const L=layers[i]; if(!L) return; L.opacity=+v/100; applyOpacity(L); };
+function setVis(L){ ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s)) map.setLayoutProperty(L.id+s,"visibility",L.visible?"visible":"none"); }); }
+function removeLayer(L){ ["-fill","-line","-pt"].forEach(s=>{ if(map.getLayer(L.id+s))map.removeLayer(L.id+s); }); if(map.getSource(L.id))map.removeSource(L.id); layers=layers.filter(x=>x!==L); showTab("layers"); }
+// Clicking a feature used to return debug output (h3: 8928308280fffff). A record
+// card names the thing, leads with the number that matters, formats values the
+// same way the legend does, and keeps the machine keys out of the way.
+const HIDDEN_FIELDS=["drawn","index_right","index_left","id","@id","osmid"];
+const NAME_FIELDS=["name","@name","address","label","title","street","spc_common"];
+function recordPopup(e,L){
+  const f=e.features[0], p=f.properties||{};
+  const entries=Object.entries(p).filter(([k,v])=>
+    v!==null&&v!==""&&!HIDDEN_FIELDS.includes(k)&&!String(k).startsWith("@"));
+  const nameKey=NAME_FIELDS.find(k=>p[k]);
+  const headline=(L&&L.field&&p[L.field]!==undefined)?L.field:null;
+  const rest=entries.filter(([k])=>k!==nameKey&&k!==headline);
+  const html=`<div class="rec">`
+    +`<div class="rectop">${esc((L&&L.name)||"Feature")}</div>`
+    +(nameKey?`<div class="recname">${esc(String(p[nameKey]))}</div>`:"")
+    +(headline?`<div class="rechead"><span>${esc(FIELD_LABEL[headline]||headline.replace(/_/g," "))}</span>`
+        +`<b>${esc(fmtNum(headline,p[headline]))}</b></div>`:"")
+    +(rest.length?`<dl class="recrows">`+rest.slice(0,12).map(([k,v])=>
+        `<dt>${esc(k.replace(/_/g," "))}</dt><dd>${esc(typeof v==="number"?fmtNum(k,v):String(v))}</dd>`).join("")+`</dl>`:"")
+    +(!nameKey&&!headline&&!rest.length?`<div class="sub" style="margin:0">This feature carries no attributes.</div>`:"")
+    +`</div>`;
+  new maplibregl.Popup({maxWidth:"290px",closeButton:true}).setLngLat(e.lngLat).setHTML(html).addTo(map);
+}
+function fitTo(gj){ try{ const b=new maplibregl.LngLatBounds(); (gj.features||[]).forEach(f=>eachCoord(f.geometry,c=>b.extend(c))); if(!b.isEmpty())map.fitBounds(b,{padding:70,maxZoom:16}); }catch(e){} }
+function eachCoord(g,cb){ if(!g)return; const t=g.type,c=g.coordinates; if(t==="Point")cb(c); else if(t==="LineString"||t==="MultiPoint")c.forEach(cb); else if(t==="Polygon"||t==="MultiLineString")c.forEach(r=>r.forEach(cb)); else if(t==="MultiPolygon")c.forEach(p=>p.forEach(r=>r.forEach(cb))); }
+
+// ---------- tabs / panels ----------
+function wireTabs(){ document.querySelectorAll(".rb").forEach(t=>t.onclick=()=>showTab(t.dataset.t)); }
+function getTab(){ return document.querySelector(".rb.on")?.dataset.t; }
+let askReady=false, openToolId=null;
+function showTab(t){
+  document.querySelectorAll(".rb").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
+  ["ask","tools","layers","data","saved"].forEach(k=>{ const el=$("p-"+k); if(el) el.hidden=(k!==t); });
+  // The Ask panel holds a conversation, so it is built once and kept. Rebuilding
+  // it on every tab switch was throwing the thread away.
+  if(t==="ask"){ if(!askReady){ $("p-ask").innerHTML=askHTML(); wireAsk(); askReady=true; } }
+  else if(t==="tools") renderTools();
+  else if(t==="layers"){ $("p-layers").innerHTML=layersHTML(); wireLayers(); }
+  else if(t==="data"){ $("p-data").innerHTML=dataHTML(); wireData(); }
+  else if(t==="saved"){ $("p-saved").innerHTML=savedHTML(); wireSaved(); }
+}
+// A tool is a view inside the Tools tab, not a window floating over the app, so
+// leaving it is just going somewhere else and coming back finds it as you left it.
+function renderTools(){
+  const el=$("p-tools");
+  const t=openToolId?tools.find(x=>x.id===openToolId):null;
+  if(t){ el.innerHTML=toolFormHTML(t); wireToolForm(t); }
+  else el.innerHTML=toolsHTML();
+}
+window.closeTool=()=>{ openToolId=null; pickTarget=null; if(!drawMode&&map) map.getCanvas().style.cursor=""; syncDrawUI(); renderTools(); };
+
+// ---------- ASK ----------
+function askHTML(){ return `
+  <div id="thread" role="log" aria-live="polite"></div>
+  <h3>Ask the map</h3>
+  <p class="sub">Ask a city-planning question in plain English. branch's agent runs real, verified tools and shows the answer plus a re-runnable recipe.</p>
+  <textarea class="field" id="q2" placeholder="e.g. Estimate the cost to plant 20 trees along this street and their 20-year ROI."></textarea>
+  <div class="row" style="margin-top:9px">
+    <button class="btn pri" id="askBtn" style="flex:1">Ask branch</button>
+    <label class="btn" title="Attach a GeoJSON or CSV" style="line-height:35px;cursor:pointer">Attach<input type="file" id="chatFile" accept=".geojson,.json,.csv" hidden></label>
+  </div>
+  <p class="sub" style="margin-top:10px">Asking a question needs an AI key, added under AI settings (top right). It stays in your browser. Without one, every tool on the Tools tab still works, and the example below runs a real analysis.</p>
+  <div class="cat">No AI key? See it work</div>
+  <button class="btn wide" onclick="runExample()">Try an example</button>
+  <p class="sub" style="margin-top:8px">Loads real OpenStreetMap data for a block of Manhattan and maps how dense it is. No key needed, and it leaves a layer on the map so the other tools have something to work on.</p>
+  <div id="thread" role="log" aria-live="polite"></div>`; }
+function wireAsk(){
+  $("askBtn").onclick=ask;
+  $("q2").addEventListener("keydown",e=>{ if((e.metaKey||e.ctrlKey)&&e.key==="Enter") ask(); });
+  const cf=$("chatFile"); if(cf) cf.onchange=e=>{ readFile(e.target.files[0]); cf.value=""; };
+  wireChatDrop();
+}
+async function callTool(id,params){
+  const r=await fetch(`/api/tools/${id}/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params)});
+  const d=await r.json();
+  if(d.error) throw new Error(d.error);
+  return d.result;
+}
+window.runExample=async()=>{
+  const bbox=[-73.9980,40.7250,-73.9850,40.7370];
+  setLoading(true,"Loading OpenStreetMap data...");
+  try{
+    map.fitBounds([[bbox[0],bbox[1]],[bbox[2],bbox[3]]],{padding:60});
+    const pts=await callTool("osm",{bbox,tags:{amenity:"restaurant"}});
+    if(!pts||!(pts.features||[]).length) throw new Error("No features came back for the example area.");
+    const ptsL=addLayer("Restaurants (OpenStreetMap)",pts,{fit:false,src:{t:"osm",p:{bbox,tags:{amenity:"restaurant"}}}});
+    setLoading(true,"Aggregating to hexagons...");
+    const hex=await callTool("density_hexbin",{layer:pts,resolution:9});
+    if(hex&&(hex.features||[]).length) addLayer("Restaurant density",hex,{fit:false,src:{t:"density_hexbin",p:{layer:{ref:ptsL.id},resolution:9}}});
+    showTab("layers");
+  }catch(e){
+    setLoading(false);
+    showTab("ask");
+    const th=$("thread");
+    if(th) th.insertAdjacentHTML("beforeend",`<div class="msg err">Example failed: ${esc(e.message||"request failed")}</div>`);
+  }finally{ setLoading(false); }
+};
+// The conversation, kept so follow-ups make sense ("now clip that to the Bronx").
+let chat=[];
+function pushMsg(role,html,cls){
+  const th=$("thread"); if(!th) return;
+  th.insertAdjacentHTML("beforeend",`<div class="msg ${cls||role}">${html}</div>`);
+  th.scrollTop=th.scrollHeight;
+}
+function stepsHTML(steps){
+  if(!steps||!steps.length) return "";
+  return `<details class="steps"><summary>${steps.length} step${steps.length===1?"":"s"} run</summary>`
+    +steps.map((st,i)=>`<div class="stepline"><b>${i+1}. ${esc(st.tool)}</b>`
+      +(st.feature_count!=null?`<span class="stepn">${st.feature_count} features</span>`:"")
+      +`<span>${esc(JSON.stringify(st.recipe||st.params||{}).slice(0,150))}</span></div>`).join("")
+    +`</details>`;
+}
+// Every figure in the answer is checked against what the tools actually returned.
+// The check is plain arithmetic, so it holds even for a weak local model, and it
+// cannot itself invent anything.
+function receiptsHTML(r){
+  if(!r||!r.checked) return "";
+  if(r.clean) return `<div class="receipt ok">All ${r.traced} figure${r.traced===1?"":"s"} in this answer trace back to a tool run.</div>`;
+  return `<div class="receipt warn"><b>${r.traced} of ${r.checked} figures traced.</b>`
+    +`<div class="rsub">These did not come from any tool that ran, so check them before using them:</div>`
+    +r.orphans.map(o=>`<div class="orphan"><b>${esc(o.value)}</b><span>${esc(o.phrase)}</span></div>`).join("")
+    +`</div>`;
+}
+async function ask(){
+  const q=$("q2").value.trim(); if(!q)return;
+  pushMsg("you",esc(q));
+  chat.push({role:"user",content:q});
+  $("q2").value="";
+  setLoading(true,"branch is reasoning...");
+  try{
+    const r=await fetch("/api/agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q,llm:llmConfig(),history:chat.slice(0,-1),context:{layers:layers.map(l=>l.name)}})});
+    const d=await r.json();
+    if(d.error){
+      // A missing key is the most common first-run failure, so answer it with
+      // the two ways out rather than just restating the problem.
+      const needsKey=/key|provider|ollama/i.test(d.error);
+      pushMsg("err",esc(d.error)
+        +(needsKey?`<div class="row" style="margin-top:10px"><button class="btn" onclick="document.getElementById('setBtn').click()">Add a key</button><button class="btn" onclick="runExample()">Try an example instead</button></div>`:""),"err");
+    }
+    else{
+      (d.layers||[]).forEach((ly,i)=>{
+        if(!ly.geojson||!ly.geojson.features) return;
+        const t=tools.find(x=>x.id===ly.tool);
+        addLayer((t&&t.noun)||ly.tool||("result "+i),ly.geojson,{fit:i===0,src:{t:ly.tool,p:{}}});
+      });
+      const answer=d.answer||"Done.";
+      pushMsg("branch",esc(answer)+receiptsHTML(d.receipts)+stepsHTML(d.steps));
+      chat.push({role:"assistant",content:answer});   // so the next turn has context
+    }
+  }catch(e){ pushMsg("err","Could not reach the server.","err"); }
+  setLoading(false);
+}
+
+// Files can be dropped straight into the conversation, the same as the Data tab.
+function wireChatDrop(){
+  const th=$("thread"); if(!th) return;
+  const stop=e=>{ e.preventDefault(); e.stopPropagation(); };
+  th.addEventListener("dragover",e=>{ stop(e); th.classList.add("drop"); });
+  th.addEventListener("dragleave",()=>th.classList.remove("drop"));
+  th.addEventListener("drop",e=>{
+    stop(e); th.classList.remove("drop");
+    const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+    if(f) readFile(f);
+  });
+}
+// Uploaded data is part of the conversation: say so, and tell the model it exists.
+function noteUpload(name,count){
+  pushMsg("you",`Added <b>${esc(name)}</b> as a layer (${count} feature${count===1?"":"s"}).`);
+  chat.push({role:"user",content:`I uploaded a layer called "${name}" with ${count} features. It is on the map and available to the tools.`});
+}
+
+// ---------- TOOLS ----------
+async function loadTools(){ try{ tools=await(await fetch("/api/tools")).json(); }catch(e){ tools=[]; } }
+function toolsHTML(){
+  const cats={}; tools.forEach(t=>(cats[t.category]=cats[t.category]||[]).push(t));
+  // Preferred order first, then anything else that exists. A category this list
+  // has never heard of must still show up, or renaming one silently empties the panel.
+  const PREFERRED=["money","getting around","map data","shaping layers","safety"];
+  const order=[...PREFERRED.filter(c=>cats[c]),
+               ...Object.keys(cats).filter(c=>!PREFERRED.includes(c))];
+  let h=`<h3>Tools</h3><p class="sub">Pick a question. Every answer becomes a layer you can inspect, reuse, and download.</p>`;
+  if(!tools.length) h+=`<div class="empty">Could not load the tools. Reload the page, or check that the server is running.</div>`;
+  order.forEach(c=>{
+    h+=`<div class="cat">${esc(c)}</div>`;
+    cats[c].forEach(t=>h+=`<div class="tool" onclick='openTool("${t.id}")'><span class="badge">${t.returns}</span><div class="tt">${esc(t.title)}</div><div class="td">${esc(t.description)}</div></div>`);
+  });
+  return h;
+}
+// Tools that build a street network: slow the first time in a new area, then cached.
+const SLOW_TOOLS=["walkshed","coolwalk"];
+window.openTool=id=>{ if(!tools.find(x=>x.id===id)) return; openToolId=id; showTab("tools"); };
+function toolFormHTML(t){
+  const props=(t.params&&t.params.properties)||{}, req=(t.params&&t.params.required)||[];
+  let fields="";
+  for(const [k,p] of Object.entries(props)){
+    const isLayer=(p.type==="object");
+    const isBbox=(p.type==="array"&&(p.maxItems===4||k==="bbox"));
+    const isPt=(p.type==="array"&&!isBbox);
+    const id=`tf_${k}`, rq=req.includes(k);
+    fields+=`<label class="lb" for="${id}"><b>${k}</b>${rq?` <span class="req" title="required">required</span>`:""} ${esc(p.description||"")}</label>`;
+    if(isLayer) fields+=layers.length
+      ? `<select id="${id}" class="field" data-k="${k}" data-kind="layer"${rq?" required":""}>${layers.map((l,i)=>`<option value="${i}">${esc(l.name)}</option>`).join("")}</select>`
+      : `<select id="${id}" class="field" data-k="${k}" data-kind="layer" disabled><option value="">no layers yet</option></select><p class="sub" style="margin-top:6px">This tool runs on a layer. Get one with <a href="#" onclick="this.closest('dialog').close();runExample();return false">Try an example</a>, load OpenStreetMap features from the Data tab, or drop in your own file.</p>`;
+    else if(isBbox) fields+=`<button id="${id}" class="btn wide" type="button" data-k="${k}" data-kind="bbox" onclick="this.dataset.val=mapBbox();this.textContent='map view set'">Use current map view</button>`;
+    else if(isPt) fields+=`<button id="${id}" class="btn wide" type="button" data-k="${k}" data-kind="point" onclick="pickPoint(this)">Click on the map to set</button>`;
+    else if(p.enum) fields+=`<select id="${id}" class="field" data-k="${k}" data-kind="val">${p.enum.map(o=>`<option>${o}</option>`).join("")}</select>`;
+    else fields+=`<input id="${id}" class="field" data-k="${k}" data-kind="val" ${p.type==="number"||p.type==="integer"?'type="number" step="any"':""} value="${p.default??""}" placeholder="${p.type}">`;
+  }
+  return `<button class="back" onclick="closeTool()">&larr; All tools</button>`
+    +`<h3>${esc(t.title)}</h3><p class="sub">${esc(t.description)}</p>`
+    +fields
+    +`<div class="row" style="margin-top:18px"><button class="btn pri wide" id="runT">Run</button></div>`
+    +`<div id="tout" role="status" aria-live="polite"></div>`;
+}
+function wireToolForm(t){
+  const btn=$("runT");
+  if(btn) btn.onclick=()=>runTool(t,$("p-tools"));
+}
+window.mapBbox=()=>{ const b=map.getBounds(); return JSON.stringify([b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]); };
+window.pickPoint=btn=>{
+  pickTarget=btn; btn.textContent="click the map...";
+  map.getCanvas().style.cursor="crosshair";
+  const h=$("dhint"); h.hidden=false; h.textContent="Click the map to set this location.";
+};
+function onMapClick(e){
+  if(pickTarget){
+    pickTarget.dataset.val=JSON.stringify([e.lngLat.lat,e.lngLat.lng]);
+    pickTarget.textContent=`${e.lngLat.lat.toFixed(4)}, ${e.lngLat.lng.toFixed(4)}`;
+    pickTarget=null;
+    if(!drawMode) map.getCanvas().style.cursor="";
+    syncDrawUI();
+    return;
+  }
+  if(drawMode) drawClick(e);
+}
+async function runTool(t,dlg){
+  const params={},srcp={};
+  dlg.querySelectorAll("[data-k]").forEach(el=>{
+    const k=el.dataset.k,kind=el.dataset.kind; let v,sv;
+    if(kind==="layer"){ if(el.value!==""){ const src=layers[+el.value]; v=src.geojson; sv={ref:src.id}; } }
+    else if(kind==="bbox"||kind==="point"){ if(el.dataset.val){ v=JSON.parse(el.dataset.val); sv=v; } }
+    else{ v=el.value; if(el.type==="number"&&v!=="") v=+v; sv=v; }
+    if(v!==undefined&&v!==""){ params[k]=v; srcp[k]=sv; }
+  });
+  const out=dlg.querySelector("#tout");
+  const need=((t.params&&t.params.required)||[]).filter(k=>params[k]===undefined);
+  if(need.length){
+    const props=(t.params&&t.params.properties)||{};
+    const wantsLayer=need.some(k=>(props[k]||{}).type==="object");
+    out.innerHTML=`<div class="msg err" style="margin-top:12px">Still needed: ${esc(need.join(", "))}.${wantsLayer?" Run Try an example on the Ask tab to put a layer on the map first.":""}</div>`;
+    return;
+  }
+  out.innerHTML=`<p class="sub" style="margin-top:12px">Running...</p>`;
+  setLoading(true,SLOW_TOOLS.includes(t.id)?`Running ${t.title}. The first run in a new area downloads OpenStreetMap data and can take up to a minute; nearby runs after that are quick.`:`Running ${t.title}...`);
+  try{
+    const r=await fetch(`/api/tools/${t.id}/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(params)});
+    const d=await r.json();
+    if(d.error){ out.innerHTML=`<div class="msg err" style="margin-top:12px">${esc(d.error)}</div>`; }
+    else if(d.result&&d.result.type==="FeatureCollection"){ addLayer(t.noun||t.title,d.result,{src:{t:t.id,p:srcp}}); out.innerHTML=`<div class="msg branch" style="margin-top:12px">Added ${d.result.features.length} features as a layer. See the Layers tab.</div>`; }
+    else{ out.innerHTML=valueHTML(d.result,d.recipe); }
+  }catch(e){ out.innerHTML=`<div class="msg err" style="margin-top:12px">Request failed.</div>`; }
+  setLoading(false);
+}
+
+// ---------- LAYERS ----------
+function layersHTML(){
+  if(!layers.length) return areaReportHTML()+`<h3>Layers</h3><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg><br>No layers yet.<br>Run a tool, ask the map, or add your own data.</div><button class="btn wide" onclick="runExample()" style="margin-top:12px">Try an example</button>`;
+  return areaReportHTML()+profileHTML()+`<h3>Layers</h3><p class="sub">${layers.length} layer${layers.length>1?"s":""}. Toggle, inspect, or remove.</p>`
+    +`<button class="btn wide" onclick="copyShareLink(this)" style="margin-bottom:14px">Copy a link that rebuilds this</button>`
+    +`<p class="sub" id="shareNote" hidden style="margin-top:-8px"></p>`+layers.map((l,i)=>`<div class="layer"><input type="color" class="dot" data-i="${i}" value="${l.color}" oninput="setLayerColor(${i},this.value)" aria-label="Colour for ${esc(l.name)}" title="Layer colour"><input type="checkbox" ${l.visible?"checked":""} data-i="${i}" class="lvis" aria-label="Show ${esc(l.name)}"><input class="nm" value="${esc(l.name)}" data-i="${i}" aria-label="Rename this layer" title="Click to rename"><button class="dl" data-i="${i}" title="Download GeoJSON" aria-label="Download ${esc(l.name)} as GeoJSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M4 21h16"/></svg></button><button class="x" data-i="${i}" aria-label="Remove ${esc(l.name)}">&times;</button></div>`
+    +`<div class="lctl">`
+      +`<input type="range" min="0" max="100" value="${Math.round((l.opacity==null?1:l.opacity)*100)}" oninput="setLayerOpacity(${i},this.value)" aria-label="Opacity of ${esc(l.name)}" title="Opacity">`
+      +`<button type="button" onclick="openTable(${i})" title="Open the attribute table">Table</button>`
+      +`<button type="button" onclick="showProfile(${i})" title="Field types, missing values and ranges">Check</button>`
+      +`<button type="button" onclick="zoomToLayer(${i})" title="Zoom to this layer">Zoom</button>`
+      +`<button type="button" onclick="soloLayer(${i})" title="Show only this layer">Only</button>`
+      +`<button type="button" onclick="duplicateLayer(${i})" title="Duplicate this layer">Copy</button>`
+      +((l.geojson.features||[]).some(f=>(f.geometry||{}).type&&String(f.geometry.type).includes("Polygon"))
+        ?`<button type="button" onclick="buildAreaReport(layers[${i}].geojson.features.find(f=>String((f.geometry||{}).type).includes('Polygon')).geometry)" title="Break down what is inside">In here</button>`:"")
+      +`<button type="button" onclick="moveLayer(${i},-1)" ${i===0?"disabled":""} title="Move up" aria-label="Move ${esc(l.name)} up">&uarr;</button>`
+      +`<button type="button" onclick="moveLayer(${i},1)" ${i===layers.length-1?"disabled":""} title="Move down" aria-label="Move ${esc(l.name)} down">&darr;</button>`
+    +`</div>`+(l.field?`<div class="legend"><div class="lgtop">${esc(FIELD_LABEL[l.field]||l.field.replace(/_/g," "))}</div>`
+      +`<div class="lgsteps">${RAMP.map((c,n)=>`<span style="background:${c}" title="${n===0?"lowest":n===RAMP.length-1?"highest":"class "+(n+1)}"></span>`).join("")}</div>`
+      +`<div class="lgends"><span>${fmtVal(l.field,l.lo)}</span><span>${fmtVal(l.field,l.hi)}</span></div>`
+      +(l.stats?`<div class="lgstat">median ${fmtVal(l.field,l.stats.median)} &middot; ${l.stats.n} feature${l.stats.n===1?"":"s"} &middot; equal-count classes</div>`:"")
+      +`</div>`:"")).join("")+auditHTML();
+}
+function wireLayers(){
+  document.querySelectorAll(".lvis").forEach(c=>c.onchange=()=>{ const L=layers[+c.dataset.i]; L.visible=c.checked; setVis(L); });
+  document.querySelectorAll(".layer .x").forEach(b=>b.onclick=()=>removeLayer(layers[+b.dataset.i]));
+  document.querySelectorAll(".layer .dl").forEach(b=>b.onclick=()=>downloadLayer(+b.dataset.i));
+  document.querySelectorAll(".layer input.nm").forEach(inp=>{
+    const commit=()=>{
+      const L=layers[+inp.dataset.i]; if(!L) return;
+      const v=inp.value.trim();
+      if(!v){ inp.value=L.name; return; }     // never let a layer become nameless
+      L.name=v;
+      if(tableLayer===L) renderTable();
+    };
+    inp.onchange=commit;
+    inp.onblur=commit;
+    inp.onkeydown=e=>{
+      if(e.key==="Enter"){ e.preventDefault(); inp.blur(); }
+      if(e.key==="Escape"){ inp.value=layers[+inp.dataset.i].name; inp.blur(); }
+    };
+  });
+}
+
+// ---------- DATA QUALITY ----------
+// What did I actually just load? Field types, how much is missing, and the range
+// of every number, so a planner can see the shape of their data before trusting a
+// map built on it. All client side, no server call.
+function profileLayer(L){
+  const fs=L.geojson.features||[];
+  const cols={};
+  fs.forEach(f=>Object.entries(f.properties||{}).forEach(([k,v])=>{
+    const c=cols[k]||(cols[k]={n:0,nulls:0,nums:[],texts:new Set(),bools:0});
+    if(v===null||v===undefined||v===""){ c.nulls++; return; }
+    c.n++;
+    if(typeof v==="number"&&isFinite(v)) c.nums.push(v);
+    else if(typeof v==="boolean") c.bools++;
+    else c.texts.add(String(v));
+  }));
+  const geomTypes={};
+  let bad=0;
+  fs.forEach(f=>{
+    const t=(f.geometry||{}).type;
+    if(!t||!f.geometry.coordinates||!f.geometry.coordinates.length){ bad++; return; }
+    geomTypes[t]=(geomTypes[t]||0)+1;
+  });
+  const fields=Object.entries(cols).map(([name,c])=>{
+    const total=c.n+c.nulls;
+    const kind=c.nums.length>=c.n*0.8&&c.nums.length?"number"
+      :(c.bools>=c.n*0.8&&c.bools?"true/false":"text");
+    const out={name,kind,missing:c.nulls,pct:total?Math.round(100*c.nulls/total):0};
+    if(kind==="number"&&c.nums.length){ const st=fieldStats(c.nums);
+      out.lo=st.lo; out.hi=st.hi; out.median=st.median; }
+    if(kind==="text") out.distinct=c.texts.size;
+    return out;
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+  return {count:fs.length, bad, geomTypes, fields};
+}
+window.showProfile=i=>{ profileFor=layers[i]||null; showTab("layers"); };
+window.clearProfile=()=>{ profileFor=null; showTab("layers"); };
+let profileFor=null;
+function profileHTML(){
+  if(!profileFor||!layers.includes(profileFor)) return "";
+  const p=profileLayer(profileFor);
+  const geom=Object.entries(p.geomTypes).map(([k,n])=>`${n} ${k.toLowerCase()}`).join(", ")||"none";
+  return `<div class="report"><div class="rhead"><b>Inside ${esc(profileFor.name)}</b>`
+    +`<button class="dx" onclick="clearProfile()" aria-label="Close this data profile">&times;</button></div>`
+    +`<div class="sub" style="margin:0 0 10px">${p.count.toLocaleString()} features &middot; ${esc(geom)}`
+    +`${p.bad?` &middot; <span style="color:var(--err-ink)">${p.bad} with no usable geometry</span>`:""}</div>`
+    +(p.fields.length?`<table class="prof"><thead><tr><th>field</th><th>type</th><th>missing</th><th>range</th></tr></thead><tbody>`
+      +p.fields.map(f=>`<tr><td>${esc(f.name)}</td><td>${f.kind}</td>`
+        +`<td class="${f.pct>20?"warn":""}">${f.missing?`${f.missing} (${f.pct}%)`:"none"}</td>`
+        +`<td>${f.kind==="number"?`${fmtNum(f.name,f.lo)} to ${fmtNum(f.name,f.hi)}, median ${fmtNum(f.name,f.median)}`
+             :(f.kind==="text"?`${f.distinct} distinct`:"")}</td></tr>`).join("")
+      +`</tbody></table>`
+      :`<div class="sub">This layer carries no attributes, only geometry.</div>`)
+    +`</div>`;
+}
+
+// ---------- SAVED WORK ----------
+// A place to keep a piece of work: the view, the layers and how each one was
+// built. Stored in this browser, and exportable, so nothing is trapped here and
+// no account is needed.
+const SAVED_KEY="branch_saved";
+function loadSaved(){ try{ return JSON.parse(localStorage.getItem(SAVED_KEY)||"[]"); }catch(e){ return []; } }
+function putSaved(list){ try{ localStorage.setItem(SAVED_KEY,JSON.stringify(list)); }catch(e){
+  pushMsg("err","This browser would not store that (it may be out of space).","err"); } }
+window.saveCurrent=()=>{
+  const inp=$("saveName");
+  const name=((inp&&inp.value.trim())||"")||`Untitled, ${new Date().toLocaleString()}`;
+  const {st,skipped}=shareState();
+  const list=loadSaved();
+  list.unshift({id:"sv"+Date.now(), name, when:new Date().toISOString(),
+                st, skipped, layers:st.l.length});
+  putSaved(list);
+  if(inp) inp.value="";
+  showTab("saved");
+};
+window.openSaved=id=>{
+  const item=loadSaved().find(x=>x.id===id); if(!item) return;
+  layers.slice().forEach(L=>removeLayer(L));      // start from a clean map
+  reportGeom=null;
+  replayState(item.st);
+};
+window.deleteSaved=id=>{ putSaved(loadSaved().filter(x=>x.id!==id)); showTab("saved"); };
+window.renameSaved=(id,v)=>{
+  const list=loadSaved(); const it=list.find(x=>x.id===id);
+  if(!it) return; const name=String(v).trim(); if(!name) return;
+  it.name=name; putSaved(list);
+};
+window.copySavedLink=async id=>{
+  const item=loadSaved().find(x=>x.id===id); if(!item) return;
+  const url=location.origin+location.pathname+"#s="+b64(JSON.stringify(item.st));
+  try{ await navigator.clipboard.writeText(url); }catch(e){}
+  const n=$("savedNote"); if(n){ n.hidden=false; n.textContent="Link copied. It rebuilds this by re-running the same tools."; }
+};
+window.exportSaved=id=>{
+  const item=loadSaved().find(x=>x.id===id); if(!item) return;
+  const blob=new Blob([JSON.stringify(item,null,2)],{type:"application/json"});
+  const url=URL.createObjectURL(blob), a=document.createElement("a");
+  a.href=url; a.download=(item.name||"analysis").replace(/[^a-z0-9]+/gi,"_").toLowerCase()+".branch.json";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+};
+window.importSaved=f=>{
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+      const item=JSON.parse(r.result);
+      if(!item||!item.st) throw new Error("that is not a branch file");
+      item.id="sv"+Date.now();
+      const list=loadSaved(); list.unshift(item); putSaved(list); showTab("saved");
+    }catch(e){ pushMsg("err","Could not read that saved file: "+esc(e.message),"err"); showTab("ask"); } };
+  r.readAsText(f);
+};
+function savedHTML(){
+  const list=loadSaved();
+  const canSave=layers.some(l=>l.src);
+  return `<h3>Saved work</h3>`
+    +`<p class="sub">Keep a view and its layers, reopen it later, send it to someone, or take it with you as a file.</p>`
+    +`<div class="row"><input class="field" id="saveName" placeholder="Name this analysis" style="flex:1">`
+    +`<button class="btn pri" onclick="saveCurrent()" ${canSave?"":"disabled title='Run a tool or add a layer first'"}>Save</button></div>`
+    +`<p class="sub" id="savedNote" hidden style="margin-top:8px"></p>`
+    +(list.length?list.map(x=>`<div class="sv">`
+        +`<input class="nm" value="${esc(x.name)}" onchange="renameSaved('${x.id}',this.value)" aria-label="Name of this saved analysis">`
+        +`<div class="svmeta">${x.layers} layer${x.layers===1?"":"s"} &middot; ${esc(new Date(x.when).toLocaleString())}`
+        +`${x.skipped?` &middot; ${x.skipped} not reproducible`:""}</div>`
+        +`<div class="lctl" style="margin-left:0">`
+          +`<button type="button" onclick="openSaved('${x.id}')">Open</button>`
+          +`<button type="button" onclick="copySavedLink('${x.id}')">Link</button>`
+          +`<button type="button" onclick="exportSaved('${x.id}')">Export</button>`
+          +`<button type="button" onclick="deleteSaved('${x.id}')">Delete</button>`
+        +`</div></div>`).join("")
+      :`<div class="empty" style="margin-top:14px">Nothing saved yet.<br>Build something on the map, then save it here.</div>`)
+    +`<div class="cat">Bring one back</div>`
+    +`<label class="btn wide" style="display:block;text-align:center;line-height:37px;cursor:pointer">Open a .branch.json file`
+    +`<input type="file" id="importSavedFile" accept=".json" hidden></label>`;
+}
+function wireSaved(){
+  const f=$("importSavedFile");
+  if(f) f.onchange=e=>{ importSaved(e.target.files[0]); f.value=""; };
+}
+
+// ---------- DATA ----------
+function dataHTML(){ return `
+  <h3>Add your data</h3>
+  <p class="sub">Drop a GeoJSON or CSV (with lat/lon columns) to bring your own layer. It stays in your browser, nothing is uploaded.</p>
+  <label class="btn pri wide" style="display:block;text-align:center;line-height:37px">Choose a file<input type="file" id="file" accept=".geojson,.json,.csv" hidden></label>
+  <div id="drop" style="margin-top:10px;padding:24px;border:1.5px dashed var(--line2);border-radius:11px;text-align:center;color:var(--faint);font-size:12.5px">or drag a file here</div>
+  <div class="cat">Free public data</div>
+  <p class="sub">Pull open data on demand. More connectors (Census, FEMA flood, social vulnerability, parcels) are on the way.</p>
+  <button class="btn wide" onclick='openTool("osm")'>OpenStreetMap features for the map view</button>`; }
+function wireData(){
+  $("file").onchange=e=>readFile(e.target.files[0]);
+  const d=$("drop");
+  d.ondragover=e=>{e.preventDefault();d.style.borderColor="var(--accent)";};
+  d.ondragleave=()=>d.style.borderColor="var(--line2)";
+  d.ondrop=e=>{e.preventDefault();d.style.borderColor="var(--line2)";readFile(e.dataTransfer.files[0]);};
+}
+// GeoJSON is defined as longitude and latitude, but exports from desktop GIS
+// routinely carry State Plane feet or UTM meters anyway. Catching that here is
+// the difference between a clear question and a map of an empty ocean.
+function sampleCoords(gj,limit=200){
+  const out=[];
+  const walk=c=>{
+    if(out.length>=limit) return;
+    if(Array.isArray(c)&&c.length>=2&&typeof c[0]==="number"&&typeof c[1]==="number"){ out.push(c); return; }
+    if(Array.isArray(c)) c.forEach(walk);
+  };
+  (gj.features||[]).slice(0,limit).forEach(f=>walk((f.geometry||{}).coordinates));
+  return out;
+}
+function crsTrouble(gj){
+  const pts=sampleCoords(gj);
+  if(!pts.length) return null;
+  const xs=pts.map(p=>p[0]), ys=pts.map(p=>p[1]);
+  if(xs.some(x=>Math.abs(x)>180)||ys.some(y=>Math.abs(y)>90))
+    return {x:[Math.min(...xs),Math.max(...xs)], y:[Math.min(...ys),Math.max(...ys)]};
+  return null;
+}
+window.fixUpload=async(name,which)=>{
+  const pend=pendingUpload;
+  if(!pend) return;
+  const code=(document.getElementById("crsCode")||{}).value;
+  const b=map.getBounds();
+  const near=[b.getWest(),b.getSouth(),b.getEast(),b.getNorth()];
+  setLoading(true,"Converting coordinates...");
+  try{
+    const res=await callTool("reproject",{layer:pend.gj,from_crs:code,near});
+    addLayer(pend.name,res,{src:{t:"reproject",p:{from_crs:code}}});
+    noteUpload(pend.name,(res.features||[]).length);
+    pendingUpload=null;
+    showTab("layers");
+  }catch(e){
+    pushMsg("err",esc(e.message||"Could not convert that file."),"err");
+  }finally{ setLoading(false); }
+};
+let pendingUpload=null;
+function readFile(f){
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      let gj; if(f.name.toLowerCase().endsWith(".csv")) gj=csvToGeo(r.result); else gj=JSON.parse(r.result);
+      if(gj.type==="Feature") gj={type:"FeatureCollection",features:[gj]};
+      if(!gj.features||!gj.features.length) throw new Error("there are no features in it");
+      const bad=crsTrouble(gj);
+      if(bad){
+        // Do not draw it. Ask which system it is in, and offer the fix.
+        pendingUpload={name:f.name,gj};
+        showTab("ask");
+        pushMsg("err",`<b>${esc(f.name)}</b> is not in longitude and latitude. `
+          +`Its coordinates run from ${Math.round(bad.x[0]).toLocaleString()} to `
+          +`${Math.round(bad.x[1]).toLocaleString()} across and `
+          +`${Math.round(bad.y[0]).toLocaleString()} to ${Math.round(bad.y[1]).toLocaleString()} up, `
+          +`which is a projected grid such as State Plane feet or UTM meters. `
+          +`Drawing it as it stands would put it in the wrong part of the world.`
+          +`<div class="row" style="margin-top:10px">`
+          +`<input class="field" id="crsCode" placeholder="EPSG code, e.g. EPSG:2263" style="flex:1">`
+          +`<button class="btn pri" onclick="fixUpload()">Convert</button></div>`
+          +`<div class="sub" style="margin:8px 0 0">It is in the file's .prj or metadata. `
+          +`branch checks the result lands where you are looking before accepting it.</div>`,"err");
+        return;
+      }
+      addLayer(f.name,gj);
+      noteUpload(f.name,gj.features.length);
+      showTab("layers");
+    }catch(e){
+      showTab("ask");
+      pushMsg("err",`Could not read <b>${esc(f.name)}</b>: ${esc(e.message)}. `
+        +`branch reads GeoJSON, or CSV with latitude and longitude columns.`,"err");
+    }
+  };
+  r.onerror=()=>{ showTab("ask"); pushMsg("err",`Could not open ${esc(f.name)}.`,"err"); };
+  r.readAsText(f);
+}
+// A real CSV parser: quoted fields, embedded commas and escaped quotes. The old
+// split(",") mangled any address with a comma in it.
+function parseCsv(txt){
+  const rows=[]; let row=[], cell="", q=false;
+  const t=txt.replace(/^\uFEFF/,"");          // strip a BOM from Excel exports
+  for(let i=0;i<t.length;i++){
+    const c=t[i];
+    if(q){
+      if(c==='"'){ if(t[i+1]==='"'){ cell+='"'; i++; } else q=false; }
+      else cell+=c;
+    } else if(c==='"') q=true;
+    else if(c===","){ row.push(cell); cell=""; }
+    else if(c==="\n"){ row.push(cell); rows.push(row); row=[]; cell=""; }
+    else if(c!=="\r") cell+=c;
+  }
+  if(cell!==""||row.length){ row.push(cell); rows.push(row); }
+  return rows.filter(r=>r.some(v=>String(v).trim()!==""));
+}
+// Everything used to arrive as a string, which quietly made an uploaded column
+// unusable: no choropleth, no numeric filter, no statistics. Type it on the way in.
+function coerce(v){
+  const t=String(v).trim();
+  if(t==="") return null;
+  if(/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t)){                  // 1,234,567.89
+    const n=Number(t.replace(/,/g,"")); if(isFinite(n)) return n;
+  }
+  if(/^\$?-?\d*\.?\d+%?$/.test(t)){
+    const n=Number(t.replace(/[$%]/g,""));
+    if(isFinite(n)) return t.endsWith("%")?n:n;
+  }
+  const low=t.toLowerCase();
+  if(low==="true") return true;
+  if(low==="false") return false;
+  return t;
+}
+function csvToGeo(txt){
+  const rows=parseCsv(txt);
+  if(rows.length<2) throw new Error("that file has no rows under its header");
+  const head=rows[0].map(h=>String(h).trim());
+  const lower=head.map(h=>h.toLowerCase());
+  const la=lower.findIndex(h=>["lat","latitude","y"].includes(h));
+  const lo=lower.findIndex(h=>["lon","lng","long","longitude","x"].includes(h));
+  if(la<0||lo<0) throw new Error("it needs a latitude and a longitude column "
+    +"(named lat/latitude/y and lon/lng/longitude/x). Found: "+head.slice(0,8).join(", "));
+  // Strip-then-parse turned "notalat" into 0, which is a real place in the Gulf of
+  // Guinea. A coordinate has to actually look like a number to count as one.
+  const asCoord=v=>{
+    const t=String(v==null?"":v).trim().replace(/^\+/,"");
+    return /^-?\d*\.?\d+(e[+-]?\d+)?$/i.test(t)?Number(t):NaN;
+  };
+  let dropped=0;
+  const feats=[];
+  rows.slice(1).forEach(c=>{
+    const y=asCoord(c[la]), x=asCoord(c[lo]);
+    if(!isFinite(x)||!isFinite(y)||Math.abs(y)>90||Math.abs(x)>180){ dropped++; return; }
+    const p={};
+    head.forEach((h,i)=>{ if(i!==la&&i!==lo) p[h]=coerce(c[i]); });
+    p.latitude=y; p.longitude=x;
+    feats.push({type:"Feature",geometry:{type:"Point",coordinates:[x,y]},properties:p});
+  });
+  if(!feats.length) throw new Error("none of the rows had a usable latitude and longitude");
+  return {type:"FeatureCollection",features:feats,_dropped:dropped};
+}
+
+// ---------- draw ----------
+const DRAW_HINT={point:"Click the map to drop a point.",
+  line:"Click to add points. Double-click, or press Finish, when the line is done. Esc cancels.",
+  polygon:"Click to add corners. Double-click, or press Finish, to close the shape. Esc cancels."};
+function wireDraw(){
+  document.querySelectorAll("#draw button[data-d]").forEach(b=>b.onclick=()=>{
+    if(b.dataset.d==="clear"){ setDrawMode(null); return; }
+    setDrawMode(b.classList.contains("on")?null:b.dataset.d);
+  });
+  $("dfin").onclick=()=>finishDraw();
+  map.on("dblclick",finishDraw);
+  // A non-modal dialog gets no free Escape handling, so wire it up ourselves.
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape") return;
+    const dlg=document.querySelector("dialog.tool[open]");
+    if(dlg){ pickTarget=null; if(!drawMode) map.getCanvas().style.cursor=""; dlg.close(); dlg.remove(); syncDrawUI(); return; }
+    if(drawMode){ drawPts=[]; drawPreview(); syncDrawUI(); }
+  });
+}
+function setDrawMode(m){
+  drawMode=m; drawPts=[];
+  document.querySelectorAll("#draw button[data-d]").forEach(x=>x.classList.toggle("on",!!m&&x.dataset.d===m));
+  map.getCanvas().style.cursor=m?"crosshair":"";
+  drawPreview(); syncDrawUI();
+}
+function syncDrawUI(){
+  const shape=drawMode==="line"||drawMode==="polygon";
+  $("dfin").hidden=!(shape&&drawPts.length>=(drawMode==="polygon"?3:2));
+  const h=$("dhint"); h.hidden=!drawMode;
+  if(drawMode) h.textContent=DRAW_HINT[drawMode]+(drawPts.length?`  (${drawPts.length} point${drawPts.length>1?"s":""})`:"");
+}
+// Live feedback while drawing. Without this the map looks broken: you click and
+// nothing appears until the shape is finished.
+function drawPreview(){
+  const fc={type:"FeatureCollection",features:drawPts.map(c=>({type:"Feature",properties:{},geometry:{type:"Point",coordinates:c}}))};
+  if(drawPts.length>1){
+    const line=drawMode==="polygon"?[...drawPts,drawPts[0]]:drawPts;
+    fc.features.push({type:"Feature",properties:{},geometry:{type:"LineString",coordinates:line}});
+  }
+  const src=map.getSource("drawprev");
+  if(src) src.setData(fc);
+}
+function addDrawPreviewLayers(){
+  if(map.getSource("drawprev")) return;
+  map.addSource("drawprev",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+  map.addLayer({id:"drawprev-line",source:"drawprev",type:"line",filter:["==","$type","LineString"],
+    paint:{"line-color":ACCENT,"line-width":2.5,"line-dasharray":[2,1.4]}});
+  map.addLayer({id:"drawprev-pt",source:"drawprev",type:"circle",filter:["==","$type","Point"],
+    paint:{"circle-radius":4.5,"circle-color":ACCENT,"circle-stroke-width":1.5,"circle-stroke-color":BG}});
+}
+function near(a,b){ return Math.abs(a[0]-b[0])<1e-7&&Math.abs(a[1]-b[1])<1e-7; }
+function drawClick(e){
+  const c=[e.lngLat.lng,e.lngLat.lat];
+  if(drawMode==="point"){
+    addLayer("drawn point",{type:"FeatureCollection",features:[{type:"Feature",geometry:{type:"Point",coordinates:c},properties:{drawn:true}}]},{fit:false,src:{d:{type:"Point",coordinates:c}}});
+    return;
+  }
+  drawPts.push(c); drawPreview(); syncDrawUI();
+}
+function finishDraw(e){
+  if(!drawMode||drawMode==="point") return;
+  if(e&&e.preventDefault) e.preventDefault();
+  // A double-click fires two clicks first, so drop the repeated tail vertex.
+  const pts=drawPts.slice();
+  while(pts.length>1&&near(pts[pts.length-1],pts[pts.length-2])) pts.pop();
+  if(pts.length<(drawMode==="polygon"?3:2)) return;
+  const g=drawMode==="polygon"?{type:"Polygon",coordinates:[[...pts,pts[0]]]}:{type:"LineString",coordinates:pts};
+  addLayer("drawn "+(drawMode==="polygon"?"area":drawMode),
+    {type:"FeatureCollection",features:[{type:"Feature",geometry:g,properties:{drawn:true}}]},{fit:false,src:{d:g}});
+  if(drawMode==="polygon") buildAreaReport(g);   // the planner question, asked automatically
+  drawPts=[]; drawPreview(); syncDrawUI();
+}
+
+// ---------- basemaps / search / settings ----------
+// --- what is actually inside this area ---------------------------------------
+// The planner question: draw a study area, get a breakdown of what it contains.
+// Answered from the vector tiles already in the browser, so it costs nothing and
+// returns instantly. It counts what is currently drawn, which is stated plainly
+// in the output rather than quietly implied.
+let reportGeom=null;
+function tally(map_,key){ map_[key]=(map_[key]||0)+1; }
+window.buildAreaReport=geom=>{
+  reportGeom=geom;
+  showTab("layers");
+};
+function areaReportHTML(){
+  if(!reportGeom) return "";
+  const totalM2=geomAreaM2(reportGeom);
+  const secs=[];
+  // overlays: query whatever is rendered, clip to the drawn shape, dedupe by id
+  const layerIds=[...activeOverlays].flatMap(id=>{
+    const ov=OVERLAYS.find(o=>o.id===id);
+    return ov?ov.layers.filter(l=>map.getLayer(l.id)).map(l=>({id:l.id,ov})):[];
+  });
+  let feats=[];
+  if(layerIds.length){
+    const pts=[]; eachCoord(reportGeom,c=>{ try{ pts.push(map.project(c)); }catch(e){} });
+    if(pts.length){
+      const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+      const box=[[Math.min(...xs),Math.min(...ys)],[Math.max(...xs),Math.max(...ys)]];
+      try{ feats=map.queryRenderedFeatures(box,{layers:layerIds.map(l=>l.id)}); }catch(e){ feats=[]; }
+    }
+  }
+  const byOverlay=new Map();
+  const seen=new Set();
+  feats.forEach(f=>{
+    if(!pointInGeom(repPoint(f.geometry),reportGeom)) return;
+    const sl=f.layer&&f.layer["source-layer"];
+    const key=(f.id!=null?f.id:"")+"|"+sl+"|"+JSON.stringify(repPoint(f.geometry));
+    if(seen.has(key)) return; seen.add(key);
+    const entry=layerIds.find(l=>l.id===(f.layer&&f.layer.id));
+    const label=entry?entry.ov.label:sl;
+    if(!byOverlay.has(label)) byOverlay.set(label,[]);
+    byOverlay.get(label).push({f,sl});
+  });
+  byOverlay.forEach((items,label)=>{
+    const classes={}; let area=0,len=0,heights=[],floorArea=0;
+    items.forEach(({f,sl})=>{
+      const p=f.properties||{};
+      const main=OVERLAY_MAIN[sl];
+      tally(classes,(main&&p[main])?String(p[main]).replace(/_/g," "):"unclassified");
+      const a=geomAreaM2(f.geometry); area+=a; len+=geomLenM(f.geometry);
+      if(typeof p.height==="number"&&p.height>0){
+        heights.push(p.height);
+        floorArea+=a*Math.max(1,Math.round(p.height/3.5));
+      }
+    });
+    const top=Object.entries(classes).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const rows=[["count",items.length.toLocaleString()]];
+    if(area>0) rows.push(["footprint",qty(area/M2_ACRE,"acres")]);
+    if(area>0&&totalM2>0) rows.push(["share of area",qty(100*area/totalM2)+"%"]);
+    if(len>0) rows.push(["length",qty(len/M_MILE,"miles")]);
+    if(heights.length){
+      const hs=[...heights].sort((a,b)=>a-b);
+      const mid=Math.floor(hs.length/2);
+      const medH=hs.length%2?hs[mid]:(hs[mid-1]+hs[mid])/2;
+      rows.push(["median height",`${Math.round(medH)} m`]);
+      rows.push(["tallest",`${Math.round(hs[hs.length-1])} m`]);
+      if(floorArea>0) rows.push(["floor area, approx",qty(floorArea,"m\u00b2")]);
+    }
+    secs.push(`<div class="rsec"><div class="rsech">${esc(label)}</div>`
+      +`<dl class="recrows">`+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl>`
+      +(floorArea>0?`<div class="rfoot">floor area assumes one floor per 3.5 m of height</div>`:"")
+      +`<div class="rbreak">`+top.map(([c,n])=>`<span>${esc(c)} <b>${n}</b></span>`).join("")+`</div></div>`);
+  });
+  // your own analysis layers are exact: filter their real features
+  layers.forEach(L=>{
+    const inside=(L.geojson.features||[]).filter(f=>pointInGeom(repPoint(f.geometry),reportGeom));
+    if(!inside.length) return;
+    const rows=[["features inside",inside.length.toLocaleString()]];
+    if(L.field){
+      const v=inside.map(f=>f.properties[L.field]).filter(x=>typeof x==="number");
+      if(v.length){
+        const st=fieldStats(v);
+        rows.push([`total ${L.field.replace(/_/g," ")}`,fmtNum(L.field,v.reduce((a,b)=>a+b,0))]);
+        rows.push(["median",fmtNum(L.field,st.median)]);
+      }
+    }
+    secs.push(`<div class="rsec"><div class="rsech">${esc(L.name)}</div>`
+      +`<dl class="recrows">`+rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl></div>`);
+  });
+  return `<div class="report"><div class="rhead"><b>What is in this area</b>`
+    +`<button class="dx" onclick="clearAreaReport()" aria-label="Close the area breakdown">&times;</button></div>`
+    +`<div class="sub" style="margin:0 0 10px">${qty(totalM2/M2_ACRE,"acres")} drawn.</div>`
+    +(secs.length?secs.join("")
+      :`<div class="sub">Nothing counted here yet. Turn on an overlay such as Buildings or Roads, or run a tool, and the breakdown fills in.</div>`)
+    +`<div class="rnote">Counted from the map tiles currently loaded on screen. Zoom in for a complete count, since features outside the view are not loaded.</div>`
+    +`</div>`;
+}
+window.clearAreaReport=()=>{ reportGeom=null; showTab("layers"); };
+
+// --- measuring what is on the ground -----------------------------------------
+// Spherical area and length, so a breakdown can report real acres and miles
+// rather than degrees. Same formulas turf uses, inlined to avoid a dependency.
+const EARTH_R=6378137, rad=d=>d*Math.PI/180;
+function ringAreaM2(ring){
+  let s=0;
+  for(let i=0,n=ring.length;i<n;i++){
+    const [x1,y1]=ring[i],[x2,y2]=ring[(i+1)%n];
+    s+=(rad(x2)-rad(x1))*(2+Math.sin(rad(y1))+Math.sin(rad(y2)));
+  }
+  return Math.abs(s*EARTH_R*EARTH_R/2);
+}
+function geomAreaM2(g){
+  if(!g) return 0;
+  const poly=r=>r.reduce((a,ring,i)=>a+(i?-1:1)*ringAreaM2(ring),0);
+  if(g.type==="Polygon") return poly(g.coordinates);
+  if(g.type==="MultiPolygon") return g.coordinates.reduce((a,p)=>a+poly(p),0);
+  return 0;
+}
+function segLenM(a,b){
+  const dLat=rad(b[1]-a[1]), dLon=rad(b[0]-a[0]);
+  const h=Math.sin(dLat/2)**2+Math.cos(rad(a[1]))*Math.cos(rad(b[1]))*Math.sin(dLon/2)**2;
+  return 2*EARTH_R*Math.asin(Math.min(1,Math.sqrt(h)));
+}
+function geomLenM(g){
+  if(!g) return 0;
+  const line=c=>c.reduce((a,_,i)=>i?a+segLenM(c[i-1],c[i]):0,0);
+  if(g.type==="LineString") return line(g.coordinates);
+  if(g.type==="MultiLineString") return g.coordinates.reduce((a,c)=>a+line(c),0);
+  return 0;
+}
+function repPoint(g){
+  if(!g) return null;
+  if(g.type==="Point") return g.coordinates;
+  if(g.type==="MultiPoint"||g.type==="LineString") return g.coordinates[Math.floor(g.coordinates.length/2)];
+  if(g.type==="MultiLineString") return g.coordinates[0][0];
+  if(g.type==="Polygon") return g.coordinates[0][0];
+  if(g.type==="MultiPolygon") return g.coordinates[0][0][0];
+  return null;
+}
+function pointInRing(pt,ring){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const [xi,yi]=ring[i],[xj,yj]=ring[j];
+    if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/((yj-yi)||1e-12)+xi)) inside=!inside;
+  }
+  return inside;
+}
+function pointInGeom(pt,g){
+  if(!pt||!g) return false;
+  const inPoly=rings=>rings.some((r,i)=>i===0?pointInRing(pt,r):false)
+                    && !rings.slice(1).some(r=>pointInRing(pt,r));
+  if(g.type==="Polygon") return inPoly(g.coordinates);
+  if(g.type==="MultiPolygon") return g.coordinates.some(inPoly);
+  return false;
+}
+const M2_ACRE=4046.856, M_MILE=1609.344;
+// Precision should follow magnitude. "34.34 acres" implies a survey; "34.3" is
+// what the data supports, and "1,149" needs no decimals at all.
+function qty(n,unit){
+  if(!isFinite(n)) return "-";
+  const a=Math.abs(n);
+  const d=a>=100?0:a>=10?1:a>=1?2:3;
+  return n.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:d})
+    +(unit?" "+unit:"");
+}
+
+// Overture publishes the whole planet as PMTiles archives with CORS and range
+// requests, so a real building, road, water and land-cover overlay costs one
+// script tag and no backend at all. Layer names and zooms below were read out of
+// each archive's own metadata, not guessed.
+const OVERTURE_REL="2026-07-22.0";
+const PM=t=>`pmtiles://https://tiles.overturemaps.org/${OVERTURE_REL}/${t}.pmtiles`;
+const OV_ATTR="&copy; Overture Maps Foundation (ODbL)";
+const OVERLAYS=[
+  {id:"buildings",label:"Buildings",theme:"buildings",layers:[
+    {id:"ov-buildings",type:"fill-extrusion","source-layer":"building",minzoom:13,
+     paint:{"fill-extrusion-color":"#43574c","fill-extrusion-opacity":.85,
+            "fill-extrusion-base":0,
+            "fill-extrusion-height":["coalesce",["get","height"],6]}},
+    {id:"ov-buildings-flat",type:"fill","source-layer":"building",maxzoom:13,
+     paint:{"fill-color":"#33453b","fill-outline-color":"#4a5f53"}}]},
+  {id:"roads",label:"Roads",theme:"transportation",layers:[
+    {id:"ov-roads",type:"line","source-layer":"segment",
+     paint:{"line-color":["match",["get","class"],
+              "motorway","#e6c07b","trunk","#e6c07b","primary","#d3ab68",
+              "footway","#8ed3a6","path","#8ed3a6","sidewalk","#8ed3a6","#78867d"],
+            "line-width":["interpolate",["linear"],["zoom"],10,.4,14,1.6,18,4]}}]},
+  {id:"water",label:"Water",theme:"base",layers:[
+    {id:"ov-water",type:"fill","source-layer":"water",
+     paint:{"fill-color":"#1e3b52","fill-opacity":.8}}]},
+  {id:"green",label:"Green cover",theme:"base",layers:[
+    {id:"ov-green",type:"fill","source-layer":"land_cover",
+     paint:{"fill-color":"#2d5c3e","fill-opacity":.45}}]},
+  {id:"landuse",label:"Land use",theme:"base",layers:[
+    {id:"ov-landuse",type:"fill","source-layer":"land_use",
+     paint:{"fill-color":"#3a4d2f","fill-opacity":.42}}]},
+  {id:"infra",label:"Infrastructure",theme:"base",layers:[
+    {id:"ov-infra",type:"circle","source-layer":"infrastructure",minzoom:12,
+     paint:{"circle-radius":3.4,"circle-color":"#e88a6a",
+            "circle-stroke-width":1,"circle-stroke-color":BG}}]},
+  {id:"boundaries",label:"Boundaries",theme:"divisions",layers:[
+    {id:"ov-bounds",type:"line","source-layer":"division_boundary",
+     paint:{"line-color":"#b9a1f0","line-width":1.4,"line-dasharray":[3,2]}}]},
+  {id:"addresses",label:"Addresses",theme:"addresses",layers:[
+    {id:"ov-addr",type:"circle","source-layer":"address",minzoom:15,
+     paint:{"circle-radius":2.2,"circle-color":"#e6c07b"}}]},
+  {id:"places",label:"Places",theme:"places",layers:[
+    {id:"ov-places",type:"circle","source-layer":"place",minzoom:13,
+     paint:{"circle-radius":3,"circle-color":"#6fa8e8",
+            "circle-stroke-width":1,"circle-stroke-color":BG}}]},
+];
+const activeOverlays=new Set();
+function firstUserLayerId(){
+  try{
+    const ls=(map.getStyle()||{}).layers||[];
+    const f=ls.find(l=>String(l.id).startsWith("ly")||String(l.id).startsWith("drawprev"));
+    return f?f.id:undefined;
+  }catch(e){ return undefined; }   // style not ready yet: append instead
+}
+const OVERLAY_MAIN={building:"class",segment:"class",infrastructure:"class",
+  land_use:"class",land_cover:"subtype",water:"class",place:"basic_category",
+  division_boundary:"class",address:"street"};
+function addOverlay(ov){
+  const sid="ovsrc-"+ov.theme;
+  if(!map.getSource(sid)) map.addSource(sid,{type:"vector",url:PM(ov.theme),attribution:OV_ATTR});
+  const before=firstUserLayerId();   // analysis layers stay on top of context
+  ov.layers.forEach(l=>{
+    if(map.getLayer(l.id)) return;
+    map.addLayer({...l,source:sid},before);
+    // Context you cannot interrogate is decoration. Every overlay feature answers.
+    map.on("click",l.id,e=>overlayPopup(e,ov));
+    map.on("mouseenter",l.id,()=>{ if(!drawMode&&!pickTarget) map.getCanvas().style.cursor="pointer"; });
+    map.on("mouseleave",l.id,()=>{ if(!drawMode&&!pickTarget) map.getCanvas().style.cursor=""; });
+  });
+}
+function overlayPopup(e,ov){
+  const f=e.features[0], p=f.properties||{}, sl=f.layer&&f.layer["source-layer"];
+  const main=OVERLAY_MAIN[sl];
+  const name=p["@name"]||p.name;
+  const kind=(main&&p[main])?String(p[main]).replace(/_/g," "):(sl||"").replace(/_/g," ");
+  const bits=[];
+  const push=(k,v,fmt)=>{ if(v!==undefined&&v!==null&&v!=="") bits.push([k,fmt?fmt(v):String(v)]); };
+  push("type",p.subtype&&p.subtype!==p[main]?String(p.subtype).replace(/_/g," "):null);
+  push("height",p.height,v=>`${Math.round(v)} m (about ${Math.max(1,Math.round(v/3.5))} floors)`);
+  push("floors",p.min_floor!==undefined&&p.level!==undefined?`${p.min_floor} to ${p.level}`:null);
+  push("surface",p.road_surface||p.surface,v=>String(v).replace(/_/g," "));
+  push("material",p.facade_material,v=>String(v).replace(/_/g," "));
+  push("category",p.categories&&p.categories.primary);
+  push("brand",p.brand&&p.brand.names&&p.brand.names.primary);
+  if(f.geometry&&(f.geometry.type||"").includes("Polygon")){
+    const a=geomAreaM2(f.geometry);
+    if(a>0) bits.push(["footprint",`${qty(a,"m\u00b2")} (${qty(a/M2_ACRE,"acres")})`]);
+    if(p.height>0) bits.push(["floor area, approx",qty(a*Math.max(1,Math.round(p.height/3.5)),"m\u00b2")]);
+  }
+  if(f.geometry&&(f.geometry.type||"").includes("LineString")){
+    const l=geomLenM(f.geometry);
+    if(l>0) bits.push(["length here",qty(l,"m")]);
+  }
+  const html=`<div class="rec"><div class="rectop">${esc(ov.label)}</div>`
+    +(name?`<div class="recname">${esc(name)}</div>`:"")
+    +(kind?`<div class="reckind">${esc(kind)}</div>`:"")
+    +(bits.length?`<dl class="recrows">`+bits.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl>`
+      :`<div class="sub" style="margin:6px 0 0">Overture publishes no further detail for this feature.</div>`)
+    +`</div>`;
+  new maplibregl.Popup({maxWidth:"290px",closeButton:true}).setLngLat(e.lngLat).setHTML(html).addTo(map);
+}
+function removeOverlay(ov){
+  ov.layers.forEach(l=>{ if(map.getLayer(l.id)) map.removeLayer(l.id); });
+}
+window.toggleOverlay=id=>{
+  const ov=OVERLAYS.find(o=>o.id===id); if(!ov) return;
+  if(activeOverlays.has(id)){ activeOverlays.delete(id); removeOverlay(ov); }
+  else{
+    try{
+      addOverlay(ov);
+      activeOverlays.add(id);
+      // Extruded buildings are invisible from straight above, so lean the camera
+      // once, and only if the user has not already chosen an angle.
+      if(id==="buildings"&&map.getPitch()===0) map.easeTo({pitch:50,duration:700});
+    }
+    catch(e){
+      // Failing quietly would look like a dead button, so say what happened.
+      activeOverlays.delete(id);
+      const h=$("dhint");
+      if(h){ h.hidden=false; h.textContent=`Could not load the ${ov.label} overlay. It streams from Overture Maps, so a blocked or offline connection will stop it.`; }
+    }
+  }
+  renderOverlayBar();
+};
+function renderOverlayBar(){
+  const el=$("overlays"); if(!el) return;
+  el.innerHTML=OVERLAYS.map(o=>
+    `<button type="button" data-ov="${o.id}" aria-pressed="${activeOverlays.has(o.id)}" class="${activeOverlays.has(o.id)?"on":""}">${esc(o.label)}</button>`
+  ).join("");
+  el.querySelectorAll("[data-ov]").forEach(btn=>btn.onclick=()=>toggleOverlay(btn.dataset.ov));
+}
+function restoreOverlays(){
+  OVERLAYS.filter(o=>activeOverlays.has(o.id)).forEach(o=>{ try{ addOverlay(o); }catch(e){} });
+}
+
+// Esri's Wayback publishes ~195 dated snapshots of world imagery as plain tiles,
+// free and key-free, so "what did this block look like in 2016" costs one tile swap
+// and no backend at all.
+const WAYBACK_CONFIG="https://s3-us-west-2.amazonaws.com/config.maptiles.arcgis.com/waybackconfig.json";
+let wayback=null, waybackIdx=null;
+async function loadWayback(){
+  if(wayback) return wayback;
+  const cfg=await (await fetch(WAYBACK_CONFIG)).json();
+  wayback=Object.values(cfg).map(v=>{
+    const m=/(\d{4}-\d{2}-\d{2})/.exec(v.itemTitle||"");
+    return (m&&v.itemURL)?{date:m[1],
+      url:v.itemURL.replace("{level}","{z}").replace("{row}","{y}").replace("{col}","{x}")}:null;
+  }).filter(Boolean).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  return wayback;
+}
+function applyRelease(i){
+  if(!wayback||!wayback[i]) return;
+  waybackIdx=i;
+  const rel=wayback[i];
+  $("tdate").textContent=rel.date;
+  $("tslider").value=i;
+  const src=map.getSource("base");
+  if(src&&src.setTiles) src.setTiles([rel.url]);
+}
+async function enterHistory(){
+  const rel=await loadWayback();
+  $("tslider").max=rel.length-1;
+  $("timebar").hidden=false;
+  applyRelease(waybackIdx==null?rel.length-1:Math.min(waybackIdx,rel.length-1));
+}
+function setBasemap(b){
+  if(!BASEMAPS[b]) return;
+  curBasemap=b;
+  document.querySelectorAll("#basemaps button").forEach(x=>x.classList.toggle("on",x.dataset.b===b));
+  map.setStyle(baseStyle(b));
+  if(b==="history"){ enterHistory().catch(()=>{
+      const h=$("dhint"); if(h){ h.hidden=false; h.textContent="Could not load the historical imagery list."; }
+    });
+  } else { $("timebar").hidden=true; }
+}
+function wireBasemaps(){
+  document.querySelectorAll("#basemaps button").forEach(b=>b.onclick=()=>setBasemap(b.dataset.b));
+  const sl=$("tslider");
+  sl.oninput=()=>applyRelease(+sl.value);
+  sl.onkeydown=e=>{ if(e.key==="ArrowLeft"||e.key==="ArrowRight") e.stopPropagation(); };
+}
+function wireSearch(){ const q=$("q"); let tmr;
+  q.oninput=()=>{ clearTimeout(tmr); const v=q.value.trim(); if(v.length<3){$("ac").hidden=true;return;} tmr=setTimeout(async()=>{
+    try{
+      const b=map.getBounds();
+      const vb=[b.getWest(),b.getNorth(),b.getEast(),b.getSouth()].join(",");
+      const rows=await(await fetch(`/api/geocode?q=${encodeURIComponent(v)}&viewbox=${vb}`)).json();
+      const ac=$("ac"); const r=$("search").getBoundingClientRect();
+      ac.style.left=r.left+"px"; ac.style.top=(r.bottom+4)+"px"; ac.style.width=r.width+"px";
+      // A county or a borough is somewhere you work, not just a pin to fly to.
+      ac.innerHTML=(Array.isArray(rows)?rows:[]).map((x,i)=>
+        `<div class="aci" data-i="${i}">`
+        +`<span class="acl">${esc(x.label.split(", ").slice(0,3).join(", "))}</span>`
+        +(x.kind?`<span class="ack">${esc(String(x.kind).replace(/_/g," "))}</span>`:"")
+        +(x.is_area?`<button class="acb" data-area="${i}" title="Add this border as an area you can plan inside">Use as area</button>`:"")
+        +`</div>`).join("")||`<div class="aci">No matches</div>`;
+      ac.hidden=false; window._geo=rows;
+      ac.querySelectorAll(".aci").forEach(el=>el.onmousedown=ev=>{
+        if(ev.target.classList.contains("acb")) return;      // the button has its own job
+        ev.preventDefault(); const x=window._geo[+el.dataset.i];
+        if(x){ map.flyTo({center:[x.lon,x.lat],zoom:15});
+               new maplibregl.Marker({color:"#8ed3a6"}).setLngLat([x.lon,x.lat]).addTo(map); }
+        ac.hidden=true; q.value="";
+      });
+      ac.querySelectorAll(".acb").forEach(btn=>btn.onmousedown=async ev=>{
+        ev.preventDefault(); ev.stopPropagation();
+        const x=window._geo[+btn.dataset.area]; if(!x) return;
+        ac.hidden=true; q.value="";
+        await addBoundaryLayer(x);
+      });
+    }catch(e){} },350); };
+  q.onblur=()=>setTimeout(()=>$("ac").hidden=true,200);
+}
+// Turning a search result into a study area: the border becomes a layer, the map
+// frames it, and the breakdown of what is inside runs straight away.
+async function addBoundaryLayer(x){
+  setLoading(true,`Fetching the border of ${x.label.split(",")[0]}...`);
+  try{
+    const r=await fetch(`/api/boundary?osm_type=${encodeURIComponent(x.osm_type)}&osm_id=${encodeURIComponent(x.osm_id)}`);
+    const d=await r.json();
+    if(d.error) throw new Error(d.error);
+    const f=d.result.features[0], name=f.properties.name||x.label.split(",")[0];
+    addLayer(`${name} (${f.properties.kind})`,d.result,{fit:true,src:{t:"boundary",p:{name}}});
+    buildAreaReport(f.geometry);
+  }catch(e){
+    showTab("ask");
+    const th=$("thread");
+    if(th) th.insertAdjacentHTML("beforeend",`<div class="msg err">Could not load that border: ${esc(e.message||"request failed")}</div>`);
+  }finally{ setLoading(false); }
+}
+function wireSettings(){ $("setBtn").onclick=()=>{ const s=llmConfig(); $("prov").value=s.provider||"anthropic"; $("model").value=s.model||""; $("key").value=s.key||""; $("prov").onchange(); settings.showModal(); };
+  $("prov").onchange=()=>{ const ol=$("prov").value==="ollama"; $("keyLb").style.opacity=ol?.4:1; $("key").disabled=ol; $("model").placeholder=ol?"llama3.1":($("prov").value==="openai"?"gpt-4o-mini":"claude-sonnet-4-5"); }; }
+function llmConfig(){ try{ const c=JSON.parse(localStorage.getItem("branch_llm")||"{}"); return c.provider?c:{provider:"anthropic",model:"claude-sonnet-4-5"}; }catch(e){ return {provider:"anthropic"}; } }
+window.saveSettings=()=>{ const c={provider:$("prov").value,model:$("model").value||$("model").placeholder,key:$("key").value}; localStorage.setItem("branch_llm",JSON.stringify(c)); settings.close(); };
+
+// ---------- util ----------
+// A tool that returns numbers is usually answering a money question, so show it
+// as a readout rather than a JSON dump. The recipe stays one click away.
+const HEADLINE=["estimated_total_usd","npv_usd","benefit_cost_ratio","total_usd"];
+function fmtNum(k,v){
+  if(typeof v!=="number") return esc(String(v));
+  if(/_usd$|^cost$|budget|per_acre$/.test(k)) return "$"+Math.round(v).toLocaleString();
+  if(/ratio/.test(k)) return v.toFixed(2);
+  if(/years/.test(k)) return `${v} year${v===1?"":"s"}`;
+  if(/rate$/.test(k)) return (v*100).toFixed(1)+"%";
+  return (Math.round(v*100)/100).toLocaleString();
+}
+const labelOf=k=>k.replace(/_usd$/,"").replace(/_/g," ").replace(/\bnpv\b/,"net present value");
+function valueHTML(res,recipe){
+  if(!res||typeof res!=="object") return `<div class="msg branch" style="margin-top:12px">${esc(String(res))}</div>`;
+  const ent=Object.entries(res);
+  const hk=HEADLINE.find(h=>res[h]!==undefined) ?? (ent.find(([k,v])=>typeof v==="number")||[])[0];
+  const note=res.note;
+  const rows=ent.filter(([k])=>k!==hk&&k!=="note").map(([k,v])=>
+    `<div class="vrow"><span>${esc(labelOf(k))}</span><b>${fmtNum(k,v)}</b></div>`).join("");
+  return `<div class="vout">`
+    +(hk!==undefined?`<div class="vhead"><div class="vlab">${esc(labelOf(hk))}</div><div class="vbig">${fmtNum(hk,res[hk])}</div></div>`:"")
+    +rows
+    +(note?`<p class="sub" style="margin:10px 0 0">${esc(note)}</p>`:"")
+    +(recipe?`<details class="vrec"><summary>How this was computed</summary><div class="recipe">${esc(JSON.stringify(recipe,null,2))}</div></details>`:"")
+    +`</div>`;
+}
+
+// The audit trail. Every layer knows which tool made it and from what, so the
+// whole analysis can be written out as something a colleague or a council can
+// read, check, and re-run. This is the claim the product is built on.
+function auditSteps(){
+  return [...layers].sort((a,b)=>a.seq-b.seq).map((l,i)=>{
+    const n=((l.geojson||{}).features||[]).length, s=l.src;
+    let how="added directly (uploaded or drawn by hand)";
+    if(s&&s.d) how=`drawn ${String(s.d.type||"shape").toLowerCase()} on the map`;
+    else if(s&&s.t){
+      const parts=Object.entries(s.p||{}).map(([k,v])=>{
+        if(v&&typeof v==="object"&&v.ref!==undefined){
+          const ordered=[...layers].sort((a,b)=>a.seq-b.seq);
+          const at=ordered.findIndex(x=>x.id===v.ref);
+          return `${k} = ${at>=0?`step ${at+1} (${ordered[at].name})`:"a layer that was since removed"}`;
+        }
+        return `${k} = ${JSON.stringify(v)}`;
+      });
+      how=`ran ${s.t}` + (parts.length?` with ${parts.join(", ")}`:"");
+    }
+    return {step:i+1,name:l.name,features:n,how};
+  });
+}
+function auditHTML(){
+  const st=auditSteps();
+  if(!st.length) return "";
+  return `<div class="cat">Audit trail</div>`
+    +`<p class="sub">Every layer, how it was made, and what it was made from.</p>`
+    +st.map(s=>`<div class="astep"><div class="anum">${s.step}</div><div><div class="anm">${esc(s.name)}</div>`
+      +`<div class="ahow">${esc(s.how)}</div>`
+      +`<div class="ahow">${s.features} feature${s.features===1?"":"s"}</div></div></div>`).join("")
+    +`<button class="btn wide" onclick="copyReport(this)" style="margin-top:12px">Copy the analysis as a report</button>`
+    +`<p class="sub" id="reportNote" hidden style="margin-top:8px"></p>`;
+}
+window.copyReport=async()=>{
+  const st=auditSteps();
+  const {st:share}=shareState();
+  const link=location.origin+location.pathname+"#s="+b64(JSON.stringify(share));
+  const md=["# branch analysis","",
+    "Computed with branch (planwithbranch.com), an open-source city-planning tool,",
+    "from free public data. Every step below can be re-run.","","## Steps",""]
+    .concat(st.map(s=>`${s.step}. **${s.name}** - ${s.how}. ${s.features} feature${s.features===1?"":"s"}.`))
+    .concat(["","## Reproduce this","",
+      "Open the link below to re-run every step above against the same sources:","",link,""])
+    .join("\n");
+  const note=$("reportNote");
+  try{
+    await navigator.clipboard.writeText(md);
+    if(note){ note.hidden=false; note.textContent=`Report copied: ${st.length} step${st.length===1?"":"s"} plus a link that re-runs them.`; }
+  }catch(e){
+    if(note){ note.hidden=false; note.innerHTML=`<textarea class="field" readonly style="min-height:150px">${esc(md)}</textarea>`; }
+  }
+};
+
+// Anyone arriving from ArcGIS or QGIS looks for the attribute table first: a
+// sortable grid docked under the map, where clicking a row selects the feature
+// and zooms to it. Same muscle memory, no jargon.
+let tableLayer=null, tableSort={col:null,dir:1}, tableSel=null;
+function featureRows(L){ return (L.geojson.features||[]); }
+function tableColumns(L){
+  const seen=[];
+  featureRows(L).slice(0,200).forEach(f=>Object.keys(f.properties||{}).forEach(k=>{
+    if(!seen.includes(k)) seen.push(k);
+  }));
+  return seen;
+}
+window.openTable=i=>{
+  tableLayer=layers[i]||null; tableSort={col:null,dir:1}; tableSel=null;
+  renderTable();
+};
+window.closeTable=()=>{ tableLayer=null; clearTableSelection(); $("tablewrap").hidden=true; };
+window.sortTable=col=>{
+  tableSort = tableSort.col===col ? {col,dir:-tableSort.dir} : {col,dir:1};
+  renderTable();
+};
+function sortedRows(L){
+  const rows=featureRows(L).map((f,n)=>({f,n}));
+  const c=tableSort.col;
+  if(!c) return rows;
+  return rows.sort((a,b)=>{
+    const x=(a.f.properties||{})[c], y=(b.f.properties||{})[c];
+    if(x==null&&y==null) return 0;
+    if(x==null) return 1;
+    if(y==null) return -1;
+    if(typeof x==="number"&&typeof y==="number") return (x-y)*tableSort.dir;
+    return String(x).localeCompare(String(y))*tableSort.dir;
+  });
+}
+function renderTable(){
+  const wrap=$("tablewrap");
+  if(!tableLayer){ wrap.hidden=true; return; }
+  const L=tableLayer, cols=tableColumns(L), rows=sortedRows(L);
+  const shown=rows.slice(0,500);
+  wrap.hidden=false;
+  wrap.innerHTML=
+    `<div class="thead"><b>${esc(L.name)}</b>`
+    +`<span class="tcount">${featureRows(L).length} feature${featureRows(L).length===1?"":"s"}`
+    +`${shown.length<rows.length?`, showing first ${shown.length}`:""}</span>`
+    +`<button class="btn" onclick="exportTableCsv()">Export CSV</button>`
+    +`<button class="dx" onclick="closeTable()" aria-label="Close the attribute table">&times;</button></div>`
+    +`<div class="tscroll"><table><thead><tr>`
+    +cols.map(c=>`<th onclick="sortTable('${esc(c)}')" title="Sort by ${esc(c)}">${esc(c)}`
+        +`${tableSort.col===c?(tableSort.dir>0?" \u2191":" \u2193"):""}</th>`).join("")
+    +`</tr></thead><tbody>`
+    +(shown.length?shown.map(r=>
+        `<tr onclick="selectRow(${r.n})" class="${tableSel===r.n?"sel":""}">`
+        +cols.map(c=>{
+            const v=(r.f.properties||{})[c];
+            return `<td>${v==null?"":esc(typeof v==="number"?fmtNum(c,v):String(v))}</td>`;
+          }).join("")+`</tr>`).join("")
+      :`<tr><td colspan="${Math.max(cols.length,1)}">This layer has no attributes.</td></tr>`)
+    +`</tbody></table></div>`;
+}
+function clearTableSelection(){
+  tableSel=null;
+  const src=map.getSource("tblsel");
+  if(src) src.setData({type:"FeatureCollection",features:[]});
+}
+window.selectRow=n=>{
+  if(!tableLayer) return;
+  tableSel=n;
+  const f=featureRows(tableLayer)[n];
+  if(!f) return;
+  ensureSelectionLayers();
+  const src=map.getSource("tblsel");
+  if(src) src.setData({type:"FeatureCollection",features:[f]});
+  fitTo({type:"FeatureCollection",features:[f]});
+  renderTable();
+};
+function ensureSelectionLayers(){
+  if(map.getSource("tblsel")) return;
+  map.addSource("tblsel",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+  map.addLayer({id:"tblsel-line",source:"tblsel",type:"line",
+    paint:{"line-color":"#ffd479","line-width":3}});
+  map.addLayer({id:"tblsel-pt",source:"tblsel",type:"circle",filter:["==","$type","Point"],
+    paint:{"circle-radius":8,"circle-color":"rgba(255,212,121,.35)",
+           "circle-stroke-width":2.5,"circle-stroke-color":"#ffd479"}});
+}
+window.exportTableCsv=()=>{
+  if(!tableLayer) return;
+  const cols=tableColumns(tableLayer);
+  const esc2=v=>{ const t=v==null?"":String(v); return /[",\n]/.test(t)?`"${t.replace(/"/g,'""')}"`:t; };
+  const csv=[cols.join(",")].concat(
+    sortedRows(tableLayer).map(r=>cols.map(c=>esc2((r.f.properties||{})[c])).join(","))).join("\n");
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  const a=document.createElement("a");
+  a.href=url; a.download=(tableLayer.name||"table").replace(/[^a-z0-9]+/gi,"_").toLowerCase()+".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+};
+
+// Results have to be able to leave. GeoJSON opens directly in ArcGIS and QGIS,
+// which is the whole point of sitting beside them rather than replacing them.
+window.downloadLayer=i=>{
+  const L=layers[i]; if(!L) return;
+  const name=(L.name||"layer").replace(/[^a-z0-9]+/gi,"_").replace(/^_|_$/g,"").toLowerCase()||"layer";
+  const url=URL.createObjectURL(new Blob([JSON.stringify(L.geojson)],{type:"application/geo+json"}));
+  const a=document.createElement("a");
+  a.href=url; a.download=name+".geojson";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+};
+
+// ---------- shareable, re-runnable analysis ----------
+// A link carries the recipe, not the data: opening it re-runs the same tools
+// against the same free sources, so the result is reproducible rather than a
+// snapshot someone has to take on faith.
+const b64=t=>{const b=new TextEncoder().encode(t);let s="";for(const c of b)s+=String.fromCharCode(c);return btoa(s).replace(/=+$/,"");};
+const unb64=t=>new TextDecoder().decode(Uint8Array.from(atob(t),c=>c.charCodeAt(0)));
+function shareState(){
+  // A layer must be emitted after everything it was built from. Panel order is
+  // just presentation and the user can shuffle it, so sort by dependency and use
+  // creation order only to break ties.
+  const idx=new Map(), out=[];
+  const pending=layers.filter(l=>l.src).sort((a,b)=>a.seq-b.seq);
+  const refsOf=l=>Object.values(l.src.p||{}).filter(v=>v&&typeof v==="object"&&v.ref!==undefined);
+  for(let moved=true; moved; ){
+    moved=false;
+    for(let i=0;i<pending.length;i++){
+      const l=pending[i];
+      if(l.src.d){
+        idx.set(l.id,out.length); out.push({n:l.name,d:l.src.d});
+        pending.splice(i--,1); moved=true; continue;
+      }
+      if(refsOf(l).some(v=>!idx.has(v.ref))) continue;   // input not emitted yet
+      const p={};
+      for(const [k,v] of Object.entries(l.src.p||{}))
+        p[k]=(v&&typeof v==="object"&&v.ref!==undefined)?{$:idx.get(v.ref)}:v;
+      idx.set(l.id,out.length); out.push({n:l.name,t:l.src.t,p});
+      pending.splice(i--,1); moved=true;
+    }
+  }   // whatever is left depends on an upload or a deleted layer, so it cannot travel
+  const c=map.getCenter();
+  return {st:{v:[+c.lat.toFixed(5),+c.lng.toFixed(5),+map.getZoom().toFixed(2),curBasemap],l:out},
+          skipped:layers.length-out.length};
+}
+window.copyShareLink=async btn=>{
+  const {st,skipped}=shareState();
+  const url=location.origin+location.pathname+"#s="+b64(JSON.stringify(st));
+  const say=m=>{ const o=$("shareNote"); if(o){ o.hidden=false; o.textContent=m; } };
+  const note=`It rebuilds ${st.l.length} layer${st.l.length===1?"":"s"} by re-running the tools.`
+    +(skipped?` ${skipped} layer${skipped===1?"":"s"} left out: uploaded data has no recipe to replay.`:"");
+  try{
+    await navigator.clipboard.writeText(url);
+    say("Link copied. "+note);
+  }catch(e){
+    // Clipboard can be blocked. Show the link instead of trapping the page in a dialog.
+    const o=$("shareNote");
+    if(o){ o.hidden=false; o.innerHTML=`${esc(note)}<input class="field" style="margin-top:8px" readonly value="${esc(url)}">`;
+           const i=o.querySelector("input"); if(i){ i.focus(); i.select(); } }
+  }
+};
+async function replayState(st){
+  if(st.v){ if(st.v[3]&&st.v[3]!==curBasemap) setBasemap(st.v[3]); map.jumpTo({center:[st.v[1],st.v[0]],zoom:st.v[2]}); }
+  const items=st.l||[]; if(!items.length) return;
+  setLoading(true,`Rebuilding a shared analysis: re-running ${items.length} step${items.length===1?"":"s"}...`);
+  const built=[];
+  try{
+    for(const it of items){
+      if(it.d){ built.push(addLayer(it.n||"drawn",{type:"FeatureCollection",features:[{type:"Feature",properties:{drawn:true},geometry:it.d}]},{fit:false,src:{d:it.d}})); continue; }
+      const params={}, srcp={};
+      for(const [k,v] of Object.entries(it.p||{})){
+        if(v&&typeof v==="object"&&v.$!==undefined){
+          const parent=built[v.$];
+          params[k]=(parent||{}).geojson; srcp[k]={ref:(parent||{}).id};
+        } else { params[k]=v; srcp[k]=v; }
+      }
+      built.push(addLayer(it.n||it.t,await callTool(it.t,params),{fit:false,src:{t:it.t,p:srcp}}));
+    }
+    showTab("layers");
+  }catch(e){
+    showTab("ask");
+    const th=$("thread");
+    if(th) th.insertAdjacentHTML("beforeend",`<div class="msg err">Could not rebuild the shared analysis: ${esc(e.message||"a step failed")}</div>`);
+  }finally{ setLoading(false); }
+}
+function setLoading(on,msg){ $("loading").classList.toggle("on",on); if(msg)$("loadmsg").textContent=msg; }
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+init();
+</script>
+</body>
+</html>
