@@ -40,11 +40,12 @@
     --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
     --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --ease:cubic-bezier(.22,1,.36,1);
-    --rail-w:70px;--panel-w:300px;--dock-w:400px;
+    --rail-w:70px;--panel-w:300px;--dock-w:400px;--dock-h:320px;
+    --pad:16px;--rowpad:9px;--fs:13px;--fs-sm:11.5px;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
-  body{font:400 13px/1.5 var(--ui);background:var(--bg);color:var(--ink);overflow:hidden;
+  body{font:400 var(--fs)/1.5 var(--ui);background:var(--bg);color:var(--ink);overflow:hidden;
     -webkit-font-smoothing:antialiased}
   button,input,select,textarea{font:inherit;color:inherit}
   button{cursor:pointer;background:none;border:none}
@@ -82,9 +83,12 @@
 
   #panel{width:var(--panel-w);flex:none;min-width:0;display:flex;flex-direction:column;
     background:var(--panel);border-right:1px solid var(--line)}
-  #panelBody{flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:16px}
+  #panelBody{flex:1;min-width:0;overflow-y:auto;overflow-x:hidden;padding:var(--pad)}
+  /* compact trades breathing room for rows on screen; both are first-class */
+  [data-density="compact"]{--pad:11px;--rowpad:6px;--fs:12.5px;--fs-sm:11px}
 
   #stage{flex:1;min-width:0;display:flex;position:relative}
+  [data-dock="bottom"] #stage{flex-direction:column}
   #mapwrap{flex:1;min-width:0;position:relative}
   #map{position:absolute;inset:0}
 
@@ -92,9 +96,18 @@
   #dock{width:var(--dock-w);flex:none;min-width:0;display:none;flex-direction:column;
     background:var(--dock);border-left:1px solid var(--line2)}
   #dock.open{display:flex}
+  [data-dock="bottom"] #dock{width:auto;height:var(--dock-h);border-left:none;
+    border-top:1px solid var(--line2)}
+  #dock.max{position:absolute;inset:0;z-index:12;width:auto;height:auto;border:none}
   #dockGrip{width:6px;flex:none;cursor:col-resize;background:transparent;display:none}
   #dockGrip.open{display:block}
   #dockGrip:hover{background:var(--line2)}
+  [data-dock="bottom"] #dockGrip{width:auto;height:6px;cursor:row-resize}
+  #panelGrip{width:6px;flex:none;cursor:col-resize;background:transparent}
+  #panelGrip:hover{background:var(--line2)}
+  .dtab[draggable="true"]{cursor:grab}
+  .dtab.drag{opacity:.45}
+  .dtab.over{border-color:var(--accent)}
   #dockHead{height:42px;flex:none;display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;
     border-bottom:1px solid var(--line)}
   #dockHead b{font-size:12.5px;font-weight:600;flex:1;min-width:0;overflow:hidden;
@@ -154,7 +167,7 @@
   .badge{float:right;margin-left:8px;padding:1px 6px;font:400 9.5px/1.6 var(--mono);
     color:var(--faint);border:1px solid var(--line2);border-radius:6px}
 
-  .layer{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--line)}
+  .layer{display:flex;align-items:center;gap:9px;padding:var(--rowpad) 0;border-bottom:1px solid var(--line)}
   .dot{width:11px;height:11px;border-radius:4px;flex:none}
   .layer input.nm{flex:1;min-width:0;padding:3px 6px;font-size:12.5px;background:none;
     border:1px solid transparent;border-radius:7px;text-overflow:ellipsis}
@@ -210,6 +223,24 @@
   .sec:first-child{border-top:none;padding-top:0}
   .sech{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px}
 
+  #layoutBtn{position:relative}
+  #layoutMenu{position:absolute;top:46px;right:16px;z-index:40;width:250px;padding:12px;
+    background:var(--panel);border:1px solid var(--line2);border-radius:12px;
+    box-shadow:0 18px 44px rgba(0,0,0,.5);display:none}
+  #layoutMenu.open{display:block}
+  #layoutMenu .cat{margin:12px 0 6px}
+  #layoutMenu .cat:first-child{margin-top:0}
+  .seg{display:flex;gap:4px;padding:3px;background:var(--field);border:1px solid var(--line2);
+    border-radius:9px}
+  .seg button{flex:1;padding:6px 4px;font-size:11.5px;color:var(--muted);border-radius:7px}
+  .seg button.on{color:var(--accent-ink);background:var(--accent);font-weight:600}
+  .secrow{display:flex;align-items:center;gap:6px;padding:5px 0;font-size:12px}
+  .secrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .secrow button{padding:2px 7px;font-size:11px;color:var(--muted);border:1px solid var(--line);
+    border-radius:6px}
+  .secrow button:hover:not(:disabled){color:var(--ink);border-color:var(--line2)}
+  .secrow button:disabled{opacity:.35;cursor:not-allowed}
+  .secrow input{accent-color:var(--accent)}
   @media (max-width:900px){
     :root{--panel-w:100%;--dock-w:100%}
     #app{flex-direction:column;height:auto;overflow:auto}
@@ -219,7 +250,9 @@
     #panel{width:100%;border-right:none;border-bottom:1px solid var(--line)}
     #stage{flex-direction:column;min-height:70vh}
     #mapwrap{min-height:56vh}
-    #dock{width:100%;border-left:none;border-top:1px solid var(--line2);max-height:60vh}
+    #dock,[data-dock="bottom"] #dock{width:100%;height:auto;border-left:none;
+      border-top:1px solid var(--line2);max-height:60vh}
+    #panelGrip{display:none}
     #dockGrip{display:none!important}
     .tag{display:none}
   }
@@ -228,9 +261,12 @@
 <header id="top">
   <span class="wm">b<svg class="tr" viewBox="0 0 84 106" aria-label="r"><rect class="g" x="15" y="6" width="24" height="100" rx="8"/><path class="g lf" d="M29 34C35 22 54 5 71 3C64 19 40 50 29 54Z"/></svg>anch</span>
   <span class="tag">free, verified city-planning analysis</span>
+  <button class="nbtn" id="layoutBtn" aria-haspopup="true" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M9 12h12"/></svg>Layout</button>
   <a class="nbtn" href="https://github.com/BenMalaga/branch" target="_blank" rel="noopener">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5A10.5 10.5 0 0 0 8.7 22c.5.1.7-.2.7-.5v-1.8c-2.9.6-3.5-1.4-3.5-1.4-.5-1.2-1.2-1.5-1.2-1.5-.9-.6.1-.6.1-.6 1 .1 1.6 1 1.6 1 .9 1.6 2.4 1.1 3 .9.1-.7.4-1.1.6-1.4-2.3-.3-4.7-1.2-4.7-5.1 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .9-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .6 1.4.2 2.4.1 2.7.7.7 1 1.6 1 2.7 0 3.9-2.3 4.8-4.6 5.1.4.3.7.9.7 1.9v2.8c0 .3.2.6.7.5A10.5 10.5 0 0 0 12 1.5Z"/></svg>GitHub</a>
 </header>
+<div id="layoutMenu" role="dialog" aria-label="Workspace layout"></div>
 
 <div id="app">
   <nav id="rail" aria-label="Sections">
@@ -240,6 +276,7 @@
   </nav>
 
   <aside id="panel"><div id="panelBody"></div></aside>
+  <div id="panelGrip" title="Drag to resize"></div>
 
   <div id="stage">
     <div id="mapwrap">
@@ -264,6 +301,7 @@
     <section id="dock" aria-label="Results">
       <div class="dtabs" id="dockTabs"></div>
       <div id="dockHead"><b id="dockTitle"></b>
+        <button class="btn sm" id="dockMax" title="Fill the stage">Expand</button>
         <button class="btn sm" id="dockClose">Close</button></div>
       <div id="dockBody"></div>
     </section>
@@ -296,6 +334,98 @@ function fmtVal(k,v){
 }
 const label=k=>String(k).replace(/_usd$/,"").replace(/_/g," ");
 
+/* ---- the workspace is the user's, not ours ----------------------------- */
+const SECTIONS=[
+  {id:"tools",label:"Tools"},
+  {id:"layers",label:"Layers"},
+  {id:"data",label:"Data"},
+];
+const LAYOUT_KEY="branch_layout";
+const DEFAULT_LAYOUT={dock:"right",density:"cozy",panelW:300,dockW:400,dockH:320,
+  order:["tools","layers","data"],hidden:[]};
+let layout={...DEFAULT_LAYOUT};
+function loadLayout(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(LAYOUT_KEY)||"{}");
+    layout={...DEFAULT_LAYOUT,...saved};
+    // a section added in a later version must still appear for existing users
+    const known=SECTIONS.map(s=>s.id);
+    layout.order=[...layout.order.filter(id=>known.includes(id)),
+                  ...known.filter(id=>!layout.order.includes(id))];
+    layout.hidden=(layout.hidden||[]).filter(id=>known.includes(id));
+  }catch(e){ layout={...DEFAULT_LAYOUT}; }
+}
+function saveLayout(){ try{ localStorage.setItem(LAYOUT_KEY,JSON.stringify(layout)); }catch(e){} }
+function applyLayout(){
+  const r=document.documentElement;
+  r.dataset.dock=layout.dock;
+  r.dataset.density=layout.density;
+  r.style.setProperty("--panel-w",layout.panelW+"px");
+  r.style.setProperty("--dock-w",layout.dockW+"px");
+  r.style.setProperty("--dock-h",layout.dockH+"px");
+  renderRail();
+  if(map) map.resize();
+}
+function visibleSections(){ return layout.order.filter(id=>!layout.hidden.includes(id)); }
+function renderRail(){
+  const icons={
+    tools:'<path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h7M15 17h5"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="13" cy="17" r="2"/>',
+    layers:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+    data:'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  };
+  const vis=visibleSections();
+  if(!vis.includes(tab)) tab=vis[0]||"tools";
+  $("rail").innerHTML=vis.map(id=>{
+    const sec=SECTIONS.find(s=>s.id===id);
+    return `<button class="rb ${id===tab?"on":""}" data-t="${id}">`
+      +`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">${icons[id]}</svg>`
+      +`${esc(sec.label)}</button>`;
+  }).join("");
+  $("rail").querySelectorAll(".rb").forEach(b=>b.onclick=()=>{ tab=b.dataset.t; renderPanel(); });
+}
+function layoutMenuHTML(){
+  const seg=(name,opts,cur)=>`<div class="seg">`+opts.map(([v,l])=>
+    `<button data-set="${name}" data-val="${v}" class="${cur===v?"on":""}">${l}</button>`).join("")+`</div>`;
+  return `<div class="cat">Results panel</div>`
+    +seg("dock",[["right","Right"],["bottom","Bottom"]],layout.dock)
+    +`<div class="cat">Density</div>`
+    +seg("density",[["cozy","Cozy"],["compact","Compact"]],layout.density)
+    +`<div class="cat">Sections</div>`
+    +layout.order.map((id,i)=>{
+      const sec=SECTIONS.find(s=>s.id===id);
+      const on=!layout.hidden.includes(id);
+      return `<div class="secrow">`
+        +`<input type="checkbox" ${on?"checked":""} data-show="${id}" aria-label="Show ${esc(sec.label)}">`
+        +`<span>${esc(sec.label)}</span>`
+        +`<button data-move="${id}" data-dir="-1" ${i===0?"disabled":""} aria-label="Move up">&uarr;</button>`
+        +`<button data-move="${id}" data-dir="1" ${i===layout.order.length-1?"disabled":""} aria-label="Move down">&darr;</button>`
+        +`</div>`;
+    }).join("")
+    +`<button class="btn wide sm" id="resetLayout" style="margin-top:12px">Reset to defaults</button>`
+    +`<div class="note">Saved in this browser. Drag the panel edge, the divider, or a result tab to rearrange.</div>`;
+}
+function openLayoutMenu(open){
+  const m=$("layoutMenu");
+  const show=open===undefined?!m.classList.contains("open"):open;
+  m.classList.toggle("open",show);
+  $("layoutBtn").setAttribute("aria-expanded",show?"true":"false");
+  if(!show) return;
+  m.innerHTML=layoutMenuHTML();
+  m.querySelectorAll("[data-set]").forEach(b=>b.onclick=()=>{
+    layout[b.dataset.set]=b.dataset.val; saveLayout(); applyLayout(); openLayoutMenu(true); });
+  m.querySelectorAll("[data-show]").forEach(c=>c.onchange=()=>{
+    const id=c.dataset.show;
+    layout.hidden = c.checked ? layout.hidden.filter(x=>x!==id) : [...layout.hidden,id];
+    if(!visibleSections().length){ layout.hidden=layout.hidden.filter(x=>x!==id); c.checked=true; }
+    saveLayout(); applyLayout(); renderPanel(); openLayoutMenu(true); });
+  m.querySelectorAll("[data-move]").forEach(b=>b.onclick=()=>{
+    const id=b.dataset.move, d=+b.dataset.dir, i=layout.order.indexOf(id), j=i+d;
+    if(j<0||j>=layout.order.length) return;
+    [layout.order[i],layout.order[j]]=[layout.order[j],layout.order[i]];
+    saveLayout(); applyLayout(); openLayoutMenu(true); });
+  $("resetLayout").onclick=()=>{ layout={...DEFAULT_LAYOUT}; saveLayout(); applyLayout(); renderPanel(); openLayoutMenu(true); };
+}
+
 /* ---- results dock ------------------------------------------------------ */
 function openCard(title,html){
   const id="c"+(++seq);
@@ -316,7 +446,7 @@ function renderDock(){
   const cur=cards.find(c=>c.id===activeCard)||cards[cards.length-1];
   activeCard=cur.id;
   $("dockTabs").innerHTML=cards.map(c=>
-    `<button class="dtab ${c.id===cur.id?"on":""}" data-c="${c.id}">${esc(c.title)}`
+    `<button class="dtab ${c.id===cur.id?"on":""}" data-c="${c.id}" draggable="true">${esc(c.title)}`
     +`<span class="x" data-close="${c.id}" title="Close">&times;</span></button>`).join("");
   $("dockTitle").textContent=cur.title;
   $("dockBody").innerHTML=cur.html;
@@ -327,20 +457,61 @@ function renderDock(){
   $("dockTabs").querySelectorAll("[data-close]").forEach(x=>x.onclick=e=>{
     e.stopPropagation(); closeCard(x.dataset.close);
   });
+  wireDockTabs();
   wireDockBody();
 }
-$("dockClose").onclick=()=>{ if(activeCard) closeCard(activeCard); };
-(function dockResize(){
-  const grip=$("dockGrip"); let on=false;
-  grip.addEventListener("mousedown",e=>{ on=true; e.preventDefault(); });
-  addEventListener("mousemove",e=>{
-    if(!on) return;
-    const w=Math.min(Math.max(innerWidth-e.clientX,280),Math.round(innerWidth*0.6));
-    document.documentElement.style.setProperty("--dock-w",w+"px");
-    if(map) map.resize();
+// Result tabs are the user's workspace, so they can be put in whatever order the
+// work wants, not the order things happened to be run.
+function wireDockTabs(){
+  let dragId=null;
+  $("dockTabs").querySelectorAll(".dtab").forEach(t=>{
+    t.ondragstart=e=>{ dragId=t.dataset.c; t.classList.add("drag");
+      try{ e.dataTransfer.setData("text/plain",dragId); e.dataTransfer.effectAllowed="move"; }catch(err){} };
+    t.ondragend=()=>{ dragId=null;
+      $("dockTabs").querySelectorAll(".dtab").forEach(x=>x.classList.remove("drag","over")); };
+    t.ondragover=e=>{ e.preventDefault(); if(t.dataset.c!==dragId) t.classList.add("over"); };
+    t.ondragleave=()=>t.classList.remove("over");
+    t.ondrop=e=>{
+      e.preventDefault(); t.classList.remove("over");
+      const from=cards.findIndex(c=>c.id===dragId), to=cards.findIndex(c=>c.id===t.dataset.c);
+      if(from<0||to<0||from===to) return;
+      const [moved]=cards.splice(from,1);
+      cards.splice(to,0,moved);
+      renderDock();
+    };
   });
-  addEventListener("mouseup",()=>{ on=false; });
-})();
+}
+$("dockClose").onclick=()=>{ if(activeCard) closeCard(activeCard); };
+$("dockMax").onclick=()=>{
+  const max=$("dock").classList.toggle("max");
+  $("dockMax").textContent=max?"Shrink":"Expand";
+  if(map) map.resize();
+};
+function draggable(grip,onMove){
+  let on=false;
+  const start=e=>{ on=true; e.preventDefault(); document.body.style.userSelect="none"; };
+  grip.addEventListener("mousedown",start);
+  grip.addEventListener("touchstart",e=>{ start(e); },{passive:false});
+  const move=(x,y)=>{ if(!on) return; onMove(x,y); if(map) map.resize(); };
+  addEventListener("mousemove",e=>move(e.clientX,e.clientY));
+  addEventListener("touchmove",e=>{ if(on&&e.touches[0]) move(e.touches[0].clientX,e.touches[0].clientY); },{passive:true});
+  const end=()=>{ if(!on) return; on=false; document.body.style.userSelect=""; saveLayout(); };
+  addEventListener("mouseup",end); addEventListener("touchend",end);
+}
+draggable($("dockGrip"),(x,y)=>{
+  if(layout.dock==="bottom"){
+    layout.dockH=Math.min(Math.max(innerHeight-y,160),Math.round(innerHeight*0.75));
+    document.documentElement.style.setProperty("--dock-h",layout.dockH+"px");
+  } else {
+    layout.dockW=Math.min(Math.max(innerWidth-x,280),Math.round(innerWidth*0.65));
+    document.documentElement.style.setProperty("--dock-w",layout.dockW+"px");
+  }
+});
+draggable($("panelGrip"),(x)=>{
+  const railW=$("rail").getBoundingClientRect().width;
+  layout.panelW=Math.min(Math.max(x-railW,220),620);
+  document.documentElement.style.setProperty("--panel-w",layout.panelW+"px");
+});
 
 function busy(on,msg){ $("busy").classList.toggle("on",!!on); if(msg) $("busyMsg").textContent=msg; }
 
@@ -419,7 +590,7 @@ function fitTo(gj){ try{ const b=new maplibregl.LngLatBounds();
 
 /* ---- panels ------------------------------------------------------------ */
 function renderPanel(){
-  document.querySelectorAll(".rb").forEach(b=>b.classList.toggle("on",b.dataset.t===tab));
+  renderRail();
   const el=$("panelBody");
   if(tab==="tools") el.innerHTML=toolsPanel();
   else if(tab==="layers") el.innerHTML=layersPanel();
@@ -832,6 +1003,7 @@ const baseStyle=b=>({version:8,sources:{base:{type:"raster",tiles:BASEMAPS[b].ti
   attribution:BASEMAPS[b].attr}},layers:[{id:"base",type:"raster",source:"base"}]});
 
 async function init(){
+  loadLayout(); applyLayout();
   if(window.pmtiles&&maplibregl.addProtocol) maplibregl.addProtocol("pmtiles",new pmtiles.Protocol().tile);
   map=new maplibregl.Map({container:"map",style:baseStyle("dark"),center:[-73.98,40.71],zoom:12.5});
   map.addControl(new maplibregl.NavigationControl({showCompass:true,visualizePitch:true}),"bottom-right");
@@ -851,7 +1023,11 @@ async function init(){
   });
   map.on("dblclick",e=>{ if(drawMode==="polygon"){ e.preventDefault(); finishDraw(); } });
 
-  document.querySelectorAll(".rb").forEach(b=>b.onclick=()=>{ tab=b.dataset.t; renderPanel(); });
+  $("layoutBtn").onclick=e=>{ e.stopPropagation(); openLayoutMenu(); };
+  document.addEventListener("click",e=>{
+    if(!$("layoutMenu").contains(e.target)&&e.target!==$("layoutBtn")) openLayoutMenu(false);
+  });
+  addEventListener("keydown",e=>{ if(e.key==="Escape") openLayoutMenu(false); });
   document.querySelectorAll("#basemaps button").forEach(b=>b.onclick=()=>{
     document.querySelectorAll("#basemaps button").forEach(x=>x.classList.toggle("on",x===b));
     map.setStyle(baseStyle(b.dataset.b));
