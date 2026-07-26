@@ -70,7 +70,7 @@ branch/
 web/index.html   the whole frontend
 web/classic.html the previous shell, frozen, served at /classic.html
 tests/           pytest, 65 tests
-tests/web/       43 frontend checks, run with ./tests/web/run.sh
+tests/web/       106 frontend checks, run with ./tests/web/run.sh
 ```
 
 ## How to add a tool
@@ -111,8 +111,13 @@ node -e "require('/tmp/stub.js'); (0,eval)(require('fs').readFileSync('/tmp/app.
 This is now a committed harness rather than something to rebuild each time:
 
 ```bash
-./tests/web/run.sh        # 43 checks against web/index.html
+./tests/web/run.sh        # 106 checks against web/index.html
 ```
+
+That includes `style.mjs`, which asserts the design system itself (every colour
+in `:root`, no em-dashes or emojis, unbreakable strings wrap, MapLibre's light
+controls are themed). Each rule in it is there because that exact violation
+shipped once.
 
 Read `tests/web/README.md` before adding to it. The stub lives in
 `tests/web/stub.js`; when a check fails, **first ask whether the stub is lying.**
