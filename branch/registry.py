@@ -1187,13 +1187,20 @@ OWNER_HINTS = ["owner", "own_name", "ownername", "owner_name", "owner1",
                "deed_owner", "taxpayer", "prop_owner", "grantee"]
 ADDR_HINTS = ["mail_addr", "mailing", "mail_add", "owner_addr", "own_addr",
               "address", "situs", "prop_addr", "location", "street"]
+# A column can contain an owner hint and still not be a name: OWNER_ADDRESS,
+# OWNER_CITY and OWNER_ZIP all contain "owner". Matching one of these put
+# mailing addresses in the owner column of a legal notice.
+NOT_A_NAME = ["addr", "address", "city", "state", "zip", "postal", "phone",
+              "email", "_id", "date", "class", "code"]
 
 
-def _pick_field(columns, hints):
+def _pick_field(columns, hints, exclude=()):
     """The first column whose name looks like what we are after, or None.
 
     Returns None rather than a guess when nothing matches. A notice list sent to
-    the wrong column is a hearing that gets challenged.
+    the wrong column is a hearing that gets challenged, so an exact name always
+    beats a substring, and a substring match is refused outright when the column
+    name also says it holds something else.
     """
     lower = {str(c).lower(): c for c in columns}
     for hint in hints:
@@ -1202,7 +1209,7 @@ def _pick_field(columns, hints):
                 return actual
     for hint in hints:
         for low, actual in lower.items():
-            if hint in low:
+            if hint in low and not any(bad in low for bad in exclude):
                 return actual
     return None
 
@@ -1246,7 +1253,8 @@ def _run_notice_list(params: dict) -> dict:
         raise ValueError(f"Within {feet:g} feet there is only the subject property "
                          f"itself, so there is nobody to notify.")
 
-    owner_col = params.get("owner_field") or _pick_field(hit.columns, OWNER_HINTS)
+    owner_col = params.get("owner_field") or _pick_field(
+        hit.columns, OWNER_HINTS, exclude=NOT_A_NAME)
     addr_col = params.get("address_field") or _pick_field(hit.columns, ADDR_HINTS)
     for name, col in (("owner_field", owner_col), ("address_field", addr_col)):
         if col is not None and col not in hit.columns:
@@ -1427,12 +1435,21 @@ def _run_summarize_within(params: dict) -> dict:
     acres = metric.geometry.area / 4046.8564224
     out["acres"] = acres.round(2)
     out["per_acre"] = np.where(acres > 0, out["count"] / acres, np.nan)
-    out["per_acre"] = out["per_acre"].round(4)
+    # Fixed decimals destroy small rates: 6 hospitals in a 566,000 acre county is
+    # 1.06e-05 per acre, which rounds to 0.0 and reads as "none". Keep significant
+    # figures instead of decimal places.
+    out["per_acre"] = [float(f"{v:.6g}") if v == v else v for v in out["per_acre"]]
     out = out.drop(columns=["_area_id"])
 
-    unplaced = len(reps) - len(joined)
+    placed = joined.index.nunique()          # items that landed in at least one area
+    unplaced = len(reps) - placed
+    multi = int(len(joined) - placed)        # items that landed in more than one
     empty = int((out["count"] == 0).sum())
-    bits = [f"{len(joined):,} of {len(reps):,} counted."]
+    bits = [f"{placed:,} of {len(reps):,} counted."]
+    if multi:
+        bits.append(f"{multi:,} landed in more than one area because the areas "
+                    f"overlap, so the per-area counts add up to more than the "
+                    f"total. That is correct per area, but do not sum the column.")
     if renamed:
         bits.append("This layer already had "
                     + ", ".join(sorted(renamed)) + ", so "
@@ -1448,8 +1465,10 @@ def _run_summarize_within(params: dict) -> dict:
     return {"result": _fc(out.to_crs("EPSG:4326") if out.crs else out),
             "recipe": {"tool": "summarize_within", "field": field,
                        **({"renamed_columns": renamed} if renamed else {}),
-                       "areas": int(len(out)), "items_counted": int(len(joined)),
-                       "items_outside": int(unplaced), "empty_areas": empty,
+                       "areas": int(len(out)), "items_counted": int(placed),
+                       "items_outside": int(unplaced),
+                       **({"items_in_several_areas": multi} if multi else {}),
+                       "empty_areas": empty,
                        "note": " ".join(bits)}}
 
 

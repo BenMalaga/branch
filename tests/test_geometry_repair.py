@@ -180,3 +180,76 @@ def test_a_second_collision_does_not_clobber_the_first_rescue():
     p = out["result"]["features"][0]["properties"]
     assert p["count_original"] == 2              # untouched
     assert p["count_original_2"] == 1            # the one we displaced
+
+
+# ---------- what the adversarial audit turned up ----------
+
+def test_owner_lookup_does_not_put_a_mailing_address_in_the_name_column():
+    """OWNER_ADDRESS contains "owner". Matching it would print addresses as
+    owner names on a legal notice."""
+    cols = ["PIN", "OWNER_ADDRESS", "OWNER_CITY", "OWNERNAME1"]
+    assert registry._pick_field(cols, registry.OWNER_HINTS,
+                                exclude=registry.NOT_A_NAME) == "OWNERNAME1"
+    assert registry._pick_field(cols, registry.ADDR_HINTS) == "OWNER_ADDRESS"
+
+
+def test_owner_lookup_still_finds_a_plain_column():
+    assert registry._pick_field(["PIN", "OWNER"], registry.OWNER_HINTS,
+                                exclude=registry.NOT_A_NAME) == "OWNER"
+
+
+def test_owner_lookup_admits_when_only_address_parts_exist():
+    assert registry._pick_field(["PIN", "OWNER_ZIP", "OWNER_CITY"],
+                                registry.OWNER_HINTS,
+                                exclude=registry.NOT_A_NAME) is None
+
+
+A = {"type": "Polygon", "coordinates": [[[-74.650, 40.35], [-74.640, 40.35],
+     [-74.640, 40.36], [-74.650, 40.36], [-74.650, 40.35]]]}
+B = {"type": "Polygon", "coordinates": [[[-74.645, 40.35], [-74.635, 40.35],
+     [-74.635, 40.36], [-74.645, 40.36], [-74.645, 40.35]]]}
+
+
+def test_overlapping_areas_do_not_produce_a_negative_count():
+    """It read "2 of 1 counted. -1 fell outside every area", which is nonsense."""
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(A, NAME="A"), _f(B, NAME="B")),
+         "items": _fc(_pt(-74.6425, 40.355))})       # inside both
+    r = out["recipe"]
+    assert r["items_counted"] == 1
+    assert r["items_outside"] == 0
+    assert r["items_in_several_areas"] == 1
+    assert "-1" not in r["note"]
+
+
+def test_overlap_is_disclosed_so_the_column_is_not_summed():
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(A, NAME="A"), _f(B, NAME="B")),
+         "items": _fc(_pt(-74.6425, 40.355))})
+    assert "do not sum the column" in out["recipe"]["note"]
+    counts = [f["properties"]["count"] for f in out["result"]["features"]]
+    assert counts == [1, 1]        # correct per area, and that is the point
+
+
+def test_a_rate_over_a_county_sized_area_is_not_rounded_to_zero():
+    """4 decimal places turned 1.06e-05 per acre into 0.0, which reads as none."""
+    import math
+    lat, side = 40.35, 48000.0
+    dlat = side / 111_320.0
+    dlon = side / (111_320.0 * math.cos(math.radians(lat)))
+    county = {"type": "Polygon", "coordinates": [[
+        [-74.65, lat], [-74.65 + dlon, lat], [-74.65 + dlon, lat + dlat],
+        [-74.65, lat + dlat], [-74.65, lat]]]}
+    pts = _fc(*[_pt(-74.65 + dlon * 0.1 * i, lat + dlat * 0.1) for i in range(1, 7)])
+    p = registry.get("summarize_within").run(
+        {"areas": _fc(_f(county, NAME="county")), "items": pts}
+    )["result"]["features"][0]["properties"]
+    assert p["per_acre"] > 0, "a real rate rounded away to zero"
+    assert abs(p["per_acre"] - p["count"] / p["acres"]) < 1e-12
+
+
+def test_a_city_scale_rate_keeps_readable_precision():
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(SQUARE, NAME="a")), "items": _fc(_pt(-74.645, 40.355))})
+    p = out["result"]["features"][0]["properties"]
+    assert abs(p["per_acre"] - 1 / p["acres"]) < 1e-9
