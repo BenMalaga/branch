@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Executes the real frontend under a DOM/MapLibre stub. The browser pane in an
+# agent session often never composites a frame, so MapLibre never finishes
+# loading and everything looks broken when it is fine. This runs the actual
+# shipped code instead, and has caught real bugs the browser never showed.
+set -u
+cd "$(dirname "$0")/../.."
+python3 -c "
+import re;s=open('web/next.html',encoding='utf-8').read()
+open('/tmp/next.js','w').write(re.findall(r'<script>(.*?)</script>',s,re.S)[-1])"
+node --check /tmp/next.js || exit 1
+fail=0
+for t in shell lineage replay interrogate table; do
+  out=$(node -e "
+    require('$PWD/tests/web/stub.js');const fs=require('fs');
+    globalThis.pmtiles={Protocol:class{constructor(){this.tile=()=>{}}}};
+    globalThis.document.documentElement={dataset:{},style:{setProperty(){},getPropertyValue(){return ''}}};
+    (0,eval)(fs.readFileSync('/tmp/next.js','utf8').replace(/\ninit\(\);\s*\$/,'')
+      +'\n;\n'+fs.readFileSync('$PWD/tests/web/'+'$t'+'.js','utf8'));
+  " 2>&1 | grep -v Warning)
+  n=$(echo "$out" | grep -cE '^PASS|OK$'); f=$(echo "$out" | grep -cE '^FAIL')
+  printf "%-9s pass=%-3s fail=%s\n" "$t" "$n" "$f"
+  echo "$out" | grep -E '^FAIL' && fail=1
+done
+exit $fail

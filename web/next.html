@@ -155,6 +155,10 @@
     z-index:60;display:grid;place-items:center;background:rgba(14,19,17,.82);
     border:2px dashed var(--accent);font-size:14px;color:var(--ink);pointer-events:none}
 
+  .grid tbody tr[data-pick]{cursor:pointer}
+  .grid tbody tr[data-pick]:hover{background:var(--surface)}
+  .grid tbody tr.picked{background:rgba(230,192,123,.14);box-shadow:inset 2px 0 0 var(--amber)}
+
   /* map popups: the library ships a white card, which is a hole punched in a dark map */
   .branchpop .maplibregl-popup-content{background:var(--panel);border:1px solid var(--line2);
     border-radius:12px;padding:11px 13px;box-shadow:0 12px 28px rgba(0,0,0,.5);color:var(--ink)}
@@ -1044,11 +1048,32 @@ function tableHTML(L){
     +`${shown.length<rows.length?`, showing the first ${shown.length}`:""}.</div>`
     +`<table class="grid"><thead><tr>`+cols.map(c=>`<th data-sort="${esc(c)}">${esc(c)}`
       +`${tableState.col===c?(tableState.dir>0?" ↑":" ↓"):""}</th>`).join("")+`</tr></thead><tbody>`
-    +(shown.length?shown.map(r=>`<tr>`+cols.map(c=>{
+    +(shown.length?shown.map(r=>`<tr data-pick="${r.i}" class="${selRow===r.i?"picked":""}">`+cols.map(c=>{
         const v=(r.f.properties||{})[c];
         return `<td>${v==null?"":esc(fmtVal(c,v))}</td>`; }).join("")+`</tr>`).join("")
       :`<tr><td>This layer has no attributes.</td></tr>`)
     +`</tbody></table>`;
+}
+let selRow=null;
+function selectionSource(){
+  if(map.getSource("tblsel")) return;
+  map.addSource("tblsel",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+  map.addLayer({id:"tblsel-line",source:"tblsel",type:"line",
+    paint:{"line-color":"#e6c07b","line-width":3}});
+  map.addLayer({id:"tblsel-pt",source:"tblsel",type:"circle",filter:["==","$type","Point"],
+    paint:{"circle-radius":9,"circle-color":"rgba(230,192,123,.3)",
+      "circle-stroke-width":2.5,"circle-stroke-color":"#e6c07b"}});
+}
+function clearSelection(){
+  selRow=null;
+  const src=map.getSource("tblsel");
+  if(src) src.setData({type:"FeatureCollection",features:[]});
+}
+function selectRow(L,i,fit){
+  const f=(L.geojson.features||[])[i]; if(!f||!f.geometry) return;
+  selectionSource(); selRow=i;
+  map.getSource("tblsel").setData({type:"FeatureCollection",features:[f]});
+  if(fit) fitTo({type:"FeatureCollection",features:[f]});
 }
 function profileCard(L){
   const fs=L.geojson.features||[];
@@ -1074,6 +1099,17 @@ function profileCard(L){
       :`<div class="empty">This layer carries geometry only, with no attributes.</div>`));
 }
 function wireDockBody(){
+  $("dockBody").querySelectorAll("[data-pick]").forEach(tr=>{
+    const L=layers.find(x=>x.id===tableState.id); if(!L) return;
+    const i=+tr.dataset.pick;
+    tr.onclick=()=>{
+      const already=selRow===i;
+      $("dockBody").querySelectorAll("[data-pick]").forEach(x=>x.classList.remove("picked"));
+      if(already){ clearSelection(); return; }
+      tr.classList.add("picked"); selectRow(L,i,false);
+    };
+    tr.ondblclick=()=>selectRow(L,i,true);   // double click frames it, the way a GIS does
+  });
   $("dockBody").querySelectorAll("[data-sort]").forEach(th=>th.onclick=()=>{
     const L=layers.find(x=>x.id===tableState.id); if(!L) return;
     const c=th.dataset.sort;
