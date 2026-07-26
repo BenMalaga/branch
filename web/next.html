@@ -150,6 +150,25 @@
   .empty{padding:22px 14px;text-align:center;color:var(--faint);font-size:12.5px;line-height:1.6;
     border:1px dashed var(--line2);border-radius:12px}
 
+  /* a drop target has to announce itself or nobody tries it */
+  #app.dropping::after{content:"Drop a GeoJSON or CSV to add it as a layer";position:fixed;inset:0;
+    z-index:60;display:grid;place-items:center;background:rgba(14,19,17,.82);
+    border:2px dashed var(--accent);font-size:14px;color:var(--ink);pointer-events:none}
+
+  /* map popups: the library ships a white card, which is a hole punched in a dark map */
+  .branchpop .maplibregl-popup-content{background:var(--panel);border:1px solid var(--line2);
+    border-radius:12px;padding:11px 13px;box-shadow:0 12px 28px rgba(0,0,0,.5);color:var(--ink)}
+  .branchpop .maplibregl-popup-tip{border-top-color:var(--panel);border-bottom-color:var(--panel)}
+  .branchpop .maplibregl-popup-close-button{color:var(--faint);font-size:17px;padding:2px 7px;
+    background:none;border:none;border-radius:7px}
+  .branchpop .maplibregl-popup-close-button:hover{color:var(--ink);background:var(--surface)}
+  .branchpop .maplibregl-popup-close-button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .pop .poptop{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--faint)}
+  .pop .popname{font-size:13.5px;margin-top:3px;overflow-wrap:anywhere}
+  .pop .popkind{font-size:12px;color:var(--muted);margin-bottom:7px}
+  .pop .kv{margin-top:6px}
+  .pop .sub{margin:6px 0 0}
+
   /* label / value rows: one component, used by every panel that shows numbers */
   .kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px 14px;align-items:baseline;margin:0}
   .kv dt{font-size:11.5px;color:var(--muted);min-width:0;overflow-wrap:anywhere}
@@ -1077,7 +1096,12 @@ function readFile(f){
       if(pts.some(c=>Math.abs(c[0])>180||Math.abs(c[1])>90))
         throw new Error("this file is in a projected coordinate system, not longitude and latitude. "
           +"Use the reproject tool with its EPSG code.");
-      addLayer(f.name,gj,{src:{f:f.name}});
+      const far=farFromView(gj);
+      const L=addLayer(f.name,gj,{src:{f:f.name},fit:true});
+      noteUpload(f.name,(gj.features||[]).length,
+        far?`Heads up: this landed about ${far.km.toLocaleString()} km from where you were looking. `
+           +`That is normal for another city, but it is also what a wrong EPSG code looks like. `
+           +`If it is in the wrong place, run the reproject tool with the right code.`:null);
       tab="layers"; renderPanel();
     }catch(e){ openCard("Could not read that file",`<div class="sec">${esc(e.message)}</div>`); }
   };
@@ -1185,6 +1209,7 @@ function addOverlay(ov){
     attribution:"&copy; Overture Maps Foundation (ODbL)"});
   const before=firstUserLayer();
   ov.layers.forEach(l=>{ if(!map.getLayer(l.id)) map.addLayer({...l,source:sid},before); });
+  if(!ov._wired){ wireOverlayClicks(ov); ov._wired=true; }
 }
 function toggleOverlay(id){
   const ov=OVERLAYS.find(o=>o.id===id); if(!ov) return;
@@ -1194,6 +1219,7 @@ function toggleOverlay(id){
       if(id==="buildings"&&map.getPitch()===0) map.easeTo({pitch:50,duration:700});
     }catch(e){ openCard("Overlay unavailable",`<div class="sec">${esc(e.message)}</div>`); }
   }
+  wireDrop();
   overlayBar();
 }
 
@@ -1261,6 +1287,135 @@ const BASEMAPS={
 const baseStyle=b=>({version:8,sources:{base:{type:"raster",tiles:BASEMAPS[b].tiles,tileSize:256,
   attribution:BASEMAPS[b].attr}},layers:[{id:"base",type:"raster",source:"base"}]});
 
+
+/* ---- Bringing your own data in ---------------------------------------------
+   Dropping a file on the conversation is the fastest path from "I have a
+   shapefile export" to "ask a question about it", so accept a drop anywhere on
+   the workspace and tell the assistant what arrived. ------------------------ */
+function noteUpload(name,count,warn){
+  if(typeof pushMsg==="function"){
+    pushMsg({role:"you",html:`Brought in <b>${esc(name)}</b> as a layer, `
+      +`${count.toLocaleString()} feature${count===1?"":"s"}.`});
+    if(warn) pushMsg({role:"branch",html:esc(warn)});
+  }
+  chat.push({role:"user",content:`I brought in a layer called "${name}" with ${count} features. `
+    +`It is on the map and available to the tools.`});
+}
+// Coordinates can be perfectly valid and still be in the wrong hemisphere: a file
+// tagged with the wrong EPSG lands in the Gulf of Guinea with in-range numbers and
+// looks fine. Say so, but do not block: working on another city is normal.
+function farFromView(gj){
+  try{
+    const pts=[]; (gj.features||[]).slice(0,200).forEach(f=>eachCoord(f.geometry,c=>pts.push(c)));
+    if(!pts.length) return null;
+    const lon=pts.reduce((a,c)=>a+c[0],0)/pts.length, lat=pts.reduce((a,c)=>a+c[1],0)/pts.length;
+    const c=map.getCenter();
+    const km=Math.hypot(rad(lat-c.lat),rad(lon-c.lng)*Math.cos(rad((lat+c.lat)/2)))*R_EARTH/1000;
+    if(km<500) return null;
+    return {km:Math.round(km),lon,lat};
+  }catch(e){ return null; }
+}
+function wireDrop(){
+  const stop=e=>{ e.preventDefault(); e.stopPropagation(); };
+  const zone=$("app")||document.body;
+  ["dragenter","dragover"].forEach(k=>zone.addEventListener(k,e=>{ stop(e); zone.classList.add("dropping"); }));
+  ["dragleave","drop"].forEach(k=>zone.addEventListener(k,e=>{
+    if(k==="dragleave"&&e.relatedTarget) return;
+    stop(e); zone.classList.remove("dropping");
+  }));
+  zone.addEventListener("drop",e=>{
+    const files=[...((e.dataTransfer&&e.dataTransfer.files)||[])];
+    if(!files.length) return;
+    const ok=files.filter(f=>/\.(json|geojson|csv)$/i.test(f.name));
+    if(!ok.length){
+      openCard("That file type is not supported",
+        `<div class="sec">branch reads GeoJSON and CSV. `
+        +`For a shapefile, export it as GeoJSON first, in whatever made it.</div>`);
+      return;
+    }
+    ok.forEach(readFile);
+  });
+}
+
+/* ---- Interrogating what is on the map --------------------------------------
+   An overlay you can only look at is decoration. Clicking a building should say
+   what it is, how big its footprint is, and roughly how many floors, because
+   that is the question a planner actually has. Overture's field names are not
+   written for people, so translate them and stay quiet where there is no data
+   rather than printing an empty row. --------------------------------------- */
+const R_EARTH=6378137, rad=d=>d*Math.PI/180;
+function ringAreaM2(r){
+  let s=0;
+  for(let i=0,n=r.length;i<n;i++){ const [x1,y1]=r[i],[x2,y2]=r[(i+1)%n];
+    s+=(rad(x2)-rad(x1))*(2+Math.sin(rad(y1))+Math.sin(rad(y2))); }
+  return Math.abs(s*R_EARTH*R_EARTH/2);
+}
+function geomAreaM2(g){
+  if(!g) return 0;
+  if(g.type==="Polygon") return g.coordinates.reduce((a,r,i)=>a+(i?-1:1)*ringAreaM2(r),0);
+  if(g.type==="MultiPolygon") return g.coordinates.reduce((a,p)=>
+    a+p.reduce((b,r,i)=>b+(i?-1:1)*ringAreaM2(r),0),0);
+  return 0;
+}
+function segLenM(a,b){
+  const dy=rad(b[1]-a[1]), dx=rad(b[0]-a[0]), m=rad((a[1]+b[1])/2);
+  return Math.hypot(dy,dx*Math.cos(m))*R_EARTH;
+}
+function geomLenM(g){
+  if(!g) return 0;
+  const line=c=>c.reduce((t,p,i)=>i?t+segLenM(c[i-1],p):0,0);
+  if(g.type==="LineString") return line(g.coordinates);
+  if(g.type==="MultiLineString") return g.coordinates.reduce((t,c)=>t+line(c),0);
+  return 0;
+}
+// the field that says what a feature IS, per Overture source layer
+const OVERLAY_MAIN={building:"subtype",segment:"class",water:"subtype",land_cover:"subtype",
+  land_use:"subtype",place:"categories",infrastructure:"subtype"};
+function overlayPopup(e,ov){
+  const f=e.features&&e.features[0]; if(!f) return;
+  const p=f.properties||{}, sl=f.layer&&f.layer["source-layer"];
+  const main=OVERLAY_MAIN[sl];
+  const name=p["@name"]||p.name;
+  const kind=(main&&p[main])?String(p[main]).replace(/_/g," "):String(sl||"").replace(/_/g," ");
+  const bits=[];
+  const push=(k,v,fmt)=>{ if(v!==undefined&&v!==null&&v!=="") bits.push([k,fmt?fmt(v):String(v)]); };
+  push("type",p.subtype&&p.subtype!==p[main]?String(p.subtype).replace(/_/g," "):null);
+  push("height",p.height,v=>`${Math.round(v)} m, about ${Math.max(1,Math.round(v/3.5))} floors`);
+  push("floors",(p.min_floor!==undefined&&p.level!==undefined)?`${p.min_floor} to ${p.level}`:null);
+  push("surface",p.road_surface||p.surface,v=>String(v).replace(/_/g," "));
+  push("material",p.facade_material,v=>String(v).replace(/_/g," "));
+  push("category",p.categories&&p.categories.primary,v=>String(v).replace(/_/g," "));
+  push("brand",p.brand&&p.brand.names&&p.brand.names.primary);
+  const g=f.geometry||{};
+  if(String(g.type).includes("Polygon")){
+    const a=geomAreaM2(g);
+    if(a>0){
+      bits.push(["footprint",`${qty(a,"m²")}, ${qty(a/M2_ACRE,"acres")}`]);
+      if(p.height>0) bits.push(["floor area, roughly",qty(a*Math.max(1,Math.round(p.height/3.5)),"m²")]);
+    }
+  }
+  if(String(g.type).includes("LineString")){
+    const l=geomLenM(g);
+    if(l>0) bits.push(["length of this piece",qty(l,"m")]);
+  }
+  const html=`<div class="pop"><div class="poptop">${esc(ov.label)}</div>`
+    +(name?`<div class="popname">${esc(name)}</div>`:"")
+    +(kind?`<div class="popkind">${esc(kind)}</div>`:"")
+    +(bits.length?`<dl class="kv">`+bits.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")+`</dl>`
+      :`<div class="sub">Overture publishes no further detail for this feature.</div>`)
+    +`</div>`;
+  new maplibregl.Popup({maxWidth:"300px",closeButton:true,className:"branchpop"})
+    .setLngLat(e.lngLat).setHTML(html).addTo(map);
+}
+function wireOverlayClicks(ov){
+  ov.layers.forEach(l=>{
+    if(l.type==="fill-extrusion"||l.type==="fill"||l.type==="line"||l.type==="circle"){
+      map.on("click",l.id,e=>overlayPopup(e,ov));
+      map.on("mouseenter",l.id,()=>{ if(!drawMode) map.getCanvas().style.cursor="pointer"; });
+      map.on("mouseleave",l.id,()=>{ if(!drawMode) map.getCanvas().style.cursor=""; });
+    }
+  });
+}
 
 /* ---- Sharing: a link re-runs the analysis, it does not carry a snapshot of
    the answer. That is the difference between "here is what I got" and "here is
