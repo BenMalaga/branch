@@ -26,6 +26,10 @@ already shipped and been fixed here:
 | NYC tree census queried anywhere | Outside New York it returned zero trees, `shade.py` read that as "no shade anywhere", and CoolWalk returned a confident route built on nothing | `sources.require()` refuses outside a source's real extent |
 | CSV coordinates stripped then parsed | `"notalat"` became `0`, silently placing rows at 0,0 in the Gulf of Guinea | `asCoord()` in `web/index.html` requires an actual number |
 | An Esri extent compared without converting | A service published in Web Mercator or State Plane would pass or fail every coverage check, since metres were compared against degrees | `esri._wgs84_extent()` converts first, and returns `None` rather than guessing at an unknown projection |
+| A self-intersecting parcel measured as real | Shapely does not raise on a bow-tie ring, it answers: **0.0 acres and 0 points inside**. Municipal parcel exports produce these routinely | `_repair()` in `registry.py` fixes invalid geometry once in `_read_fc`, keeping only parts of the original dimension |
+| `summarize_within` overwriting the user's columns | A parcel layer whose `count` meant housing units came back holding branch's count instead, silently | Colliding columns are renamed to `<name>_original` and the rename is reported in the recipe |
+| A buffer that consumed its own shape | Returned a feature with `geometry: null`, which reads as an answer and breaks everything downstream | Refuses, and a partial loss reports `shapes_consumed` |
+| `clip` to somewhere the layer does not reach | Returned an empty layer, and "nothing here" is indistinguishable from "this data does not reach here" on a map. Same shape as the tree-census bug above | Refuses and says so |
 | The web test harness exiting 0 on a crash | A suite that threw reported the passes it managed first, so wiring tests passed vacuously | `tests/web/run.sh` prints `CRASH` and fails; stub selector matches are cached so wiring and clicking touch one object |
 
 The habit that catches these: **test both directions.** A test that only checks
@@ -55,6 +59,7 @@ in the ocean. Write the negative test too.
 ```
 branch/
   registry.py    EVERY tool (21). Typed JSON-Schema contract + run(). Start here.
+                 _read_fc() repairs broken geometry for every tool, at the boundary.
   esri.py        the ArcGIS connector: URL safety, extents, Esri JSON, Hub search
   server.py      Flask: /api/tools, /api/tools/<id>/run, /api/agent, /api/geocode, /api/boundary
   agent.py       tool-calling loop, conversation history, BYO key
@@ -69,7 +74,7 @@ branch/
   raster/ml/hazard/sqldb/export/arcgis_export.py   analytics + interop
 web/index.html   the whole frontend
 web/classic.html the previous shell, frozen, served at /classic.html
-tests/           pytest, 65 tests
+tests/           pytest, 144 tests
 tests/web/       106 frontend checks, run with ./tests/web/run.sh
 ```
 
