@@ -343,6 +343,60 @@ register(Tool(
     run=_run_reproject))
 
 
+WORKSPACE_ACTIONS = {
+    "show_overlay": "turn a map overlay on (buildings, roads, water, green)",
+    "hide_overlay": "turn a map overlay off",
+    "set_basemap": "switch the basemap (dark, street, satellite)",
+    "fly_to": "move the map to a longitude and latitude, optionally a zoom",
+    "open_table": "open the attribute table for a layer, by name",
+    "check_layer": "open the data-quality check for a layer, by name",
+    "zoom_to_layer": "frame a layer on the map, by name",
+    "hide_layer": "hide a layer without deleting it, by name",
+    "show_layer": "show a hidden layer, by name",
+    "set_dock": "put the results panel on the right or the bottom",
+}
+
+
+def _run_workspace(params: dict) -> dict:
+    """Ask the browser to do something to the workspace.
+
+    The assistant can arrange the map and panels, not only compute. Nothing here
+    touches data or produces a number: it is validated, recorded in the audit
+    trail like any other step, and then carried out by the page. Keeping it a
+    real tool means the model cannot invent an action that does not exist.
+    """
+    action = str(params.get("action", "")).strip()
+    if action not in WORKSPACE_ACTIONS:
+        raise ValueError(f"{action!r} is not something branch can do to the "
+                         f"workspace. Available: " + ", ".join(sorted(WORKSPACE_ACTIONS)) + ".")
+    payload = {"action": action}
+    for key in ("target", "lon", "lat", "zoom"):
+        if params.get(key) is not None:
+            payload[key] = params[key]
+    return {"result": {"workspace": payload},
+            "recipe": {"tool": "workspace", **payload}}
+
+
+register(Tool(
+    id="workspace", title="Arrange the workspace", noun="Workspace",
+    category="map data", returns="value",
+    description="Change what the user is looking at: turn a map overlay on or "
+                "off, switch the basemap, move the map somewhere, open a layer's "
+                "table or data check, show or hide a layer, or move the results "
+                "panel. Use it to set the scene for an answer, for example "
+                "turning on Buildings before talking about them. It never "
+                "computes anything and never changes data.",
+    params={"type": "object", "required": ["action"], "properties": {
+        "action": {"type": "string", "enum": sorted(WORKSPACE_ACTIONS),
+                   "description": "; ".join(f"{k}: {v}" for k, v in sorted(WORKSPACE_ACTIONS.items()))},
+        "target": {"type": "string",
+                   "description": "which overlay, layer name, basemap or side the action applies to"},
+        "lon": {"type": "number", "description": "longitude, for fly_to"},
+        "lat": {"type": "number", "description": "latitude, for fly_to"},
+        "zoom": {"type": "number", "description": "zoom level, for fly_to"}}},
+    run=_run_workspace))
+
+
 def _run_boundary(params: dict) -> dict:
     """Find a real jurisdiction and return its border as a polygon.
 
