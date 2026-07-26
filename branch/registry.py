@@ -1219,3 +1219,51 @@ register(Tool(
         "address_field": {"type": "string",
                           "description": "column holding the mailing address"}}},
     run=_run_notice_list))
+
+
+def _run_find_data(params: dict) -> dict:
+    from . import esri
+
+    query = str(params.get("query", "")).strip()
+    bbox = params.get("bbox")
+    try:
+        rows = esri.search(query, tuple(bbox) if bbox else None,
+                           limit=int(params.get("limit", 8)))
+    except esri.EsriError as exc:
+        raise ValueError(str(exc)) from None
+
+    usable = [r for r in rows if r["open"]]
+    here = [r for r in usable if r.get("covers") is not False]
+    note = (f"{len(usable)} of {len(rows)} are readable without a login"
+            + (f", and {len(here)} reach where you are looking." if bbox
+               else "."))
+    if not usable:
+        note += (" Published does not always mean open: the rest need an account "
+                 "with the agency. Ask them for a public endpoint, or for the data "
+                 "as a file.")
+    return {"result": {"found": len(rows), "usable": len(usable),
+                       "results": rows, "note": note},
+            "recipe": {"tool": "find_data", "query": query,
+                       "bbox": list(bbox) if bbox else None,
+                       "found": len(rows), "usable": len(usable),
+                       "source": "ArcGIS Hub catalogue, each result checked directly"}}
+
+
+register(Tool(
+    id="find_data", title="Find data your town has published",
+    noun="Data search", category="map data", returns="value",
+    description="Search what agencies have actually published: parcels, zoning, "
+                "flood, trees, sidewalks, capital projects. Searches the ArcGIS "
+                "Hub catalogue, then checks every result directly, so the list "
+                "says which layers are genuinely readable without a login and "
+                "which ones reach the area you are looking at. Give it a subject "
+                "and a place, for example 'parcels Mercer County NJ'. Feed a URL "
+                "it returns into the arcgis tool to bring the layer in.",
+    params={"type": "object", "required": ["query"], "properties": {
+        "query": {"type": "string",
+                  "description": "what and where, for example 'zoning Trenton NJ'"},
+        "bbox": {"type": "array", "items": {"type": "number"}, "minItems": 4,
+                 "maxItems": 4,
+                 "description": "[west, south, east, north], to check coverage"},
+        "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 8}}},
+    run=_run_find_data))

@@ -292,3 +292,95 @@ def _clockwise(ring: list) -> bool:
         x2, y2 = ring[i + 1][0], ring[i + 1][1]
         total += (x2 - x1) * (y2 + y1)
     return total > 0
+
+
+# ---------------------------------------------------------------------------
+# Finding a service in the first place.
+#
+# The connector is useless if you do not know your town's URL, and nobody does.
+# ArcGIS Hub indexes what agencies have published and answers without a key, so
+# a search is possible. What a search cannot tell you is whether a result is
+# actually readable: plenty of published layers need a token, and plenty cover
+# a different county. Both of those only show up when you ask the service. So
+# every candidate is probed before it is offered, and results are labelled with
+# what was actually found rather than with what the catalogue claimed.
+# ---------------------------------------------------------------------------
+
+HUB_SEARCH = "https://hub.arcgis.com/api/v3/datasets"
+PROBE_LIMIT = 8
+
+
+def search(query: str, bbox: tuple | None = None, limit: int = 8) -> list[dict]:
+    """Published ArcGIS layers matching ``query``, each probed for real access."""
+    query = (query or "").strip()
+    if not query:
+        raise EsriError("Say what you are looking for, for example "
+                        "'parcels Hunterdon County' or 'zoning Trenton'.")
+    limit = max(1, min(int(limit), PROBE_LIMIT))
+
+    try:
+        r = requests.get(HUB_SEARCH, timeout=25,
+                         params={"q": query, "filter[type]": "Feature Layer",
+                                 "page[size]": max(limit * 3, 12)},
+                         headers={"User-Agent": "branch (planwithbranch.com)"})
+        r.raise_for_status()
+        payload = r.json()
+    except requests.exceptions.RequestException as exc:
+        raise EsriError(f"Could not reach the ArcGIS Hub catalogue: {exc}") from None
+    except ValueError:
+        raise EsriError("The ArcGIS Hub catalogue returned something unreadable.") from None
+
+    seen, candidates = set(), []
+    for item in payload.get("data") or []:
+        attrs = item.get("attributes") or {}
+        url = (attrs.get("url") or "").strip()
+        if not url or url in seen:
+            continue
+        try:
+            url = check_url(url)
+        except EsriError:
+            continue                      # a web map or a folder, not a layer
+        seen.add(url)
+        candidates.append({
+            "name": attrs.get("name") or "Layer",
+            "org": attrs.get("orgName") or attrs.get("owner") or "",
+            "summary": (attrs.get("snippet") or "").strip()[:200],
+            "url": url,
+        })
+        if len(candidates) >= limit:
+            break
+
+    if not candidates:
+        raise EsriError(
+            f"Nothing published matches '{query}'. Try the county or town name "
+            f"with the word parcels, zoning or boundaries, for example "
+            f"'parcels Mercer County NJ'.")
+
+    # Probe in parallel: the catalogue lies about access often enough that
+    # offering an unchecked list would waste more time than this costs.
+    from concurrent.futures import ThreadPoolExecutor
+
+    def probe(c):
+        out = dict(c, open=False, reason="", covers=None,
+                   geometry_type=None, fields=[])
+        try:
+            info = describe(c["url"])
+            out.update(open=True, geometry_type=info["geometry_type"],
+                       extent=info["extent"],
+                       fields=[f["name"] for f in info["fields"]][:30])
+            if bbox and info["extent"]:
+                out["covers"] = _overlaps(info["extent"], tuple(bbox))
+        except EsriError as exc:
+            msg = str(exc)
+            out["reason"] = ("it needs a login" if "Token Required" in msg
+                             else msg[:140])
+        except Exception:
+            out["reason"] = "it did not answer"
+        return out
+
+    with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as pool:
+        results = list(pool.map(probe, candidates))
+
+    # Readable first, then the ones that reach where you are looking.
+    results.sort(key=lambda r: (not r["open"], r.get("covers") is not True))
+    return results

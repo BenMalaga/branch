@@ -19,6 +19,26 @@ that ghost wastes hours. Running the shipped code directly does not lie.
 | `replay.js` | a shared link re-runs the tools rather than restoring a snapshot |
 | `interrogate.js` | geodesic area and length, overlay popups, the wrong-EPSG guard |
 | `table.js` | selecting a table row highlights the right feature, even when sorted |
+| `connector.js` | the ArcGIS form, and checking a layer before downloading it |
+| `notice.js` | the abutter list renders and exports with correct CSV quoting |
+| `finder.js` | search results are labelled honestly and land as a real layer |
+
+## About the stub
+
+`stub.js` has a deliberately small selector engine: `querySelectorAll` scans the
+element's own HTML for `[data-x]` and `.cls` and returns stub elements carrying
+that dataset. Matches are **cached per element and selector**, so wiring a
+handler and then clicking touch the same object. Before that caching existed,
+every "the button is wired" test passed vacuously.
+
+A suite that throws now prints `CRASH` and fails the run. It used to report the
+passes it managed before the throw and exit 0, which is the same silent-success
+bug this project exists to avoid, aimed at its own tooling.
+
+When a check fails, **first ask whether the stub is lying.** Real examples:
+spreading a class instance (`map={...map}`) strips its prototype methods, and a
+`LngLatBounds` whose `isEmpty()` returned a hardcoded `true` made every `fitTo`
+assertion vacuous.
 
 Write the negative test too. A check that only proves "it finds the thing"
 passes on code that claims everything is a finding.

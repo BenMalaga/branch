@@ -271,6 +271,12 @@
   .stepline b{color:var(--ink);display:block}
   .stepline .stepn{color:var(--accent);font-size:10.5px}
   .stepline span{font-family:var(--mono);font-size:10.5px;word-break:break-word}
+  .pill{display:inline-block;padding:2px 9px;font-size:11px;border-radius:999px;
+    border:1px solid var(--line2);color:var(--muted);white-space:nowrap}
+  .pill.ok{color:var(--accent);border-color:rgba(142,211,166,.4);
+    background:rgba(142,211,166,.1)}
+  .pill.warn{color:var(--amber);border-color:rgba(230,192,123,.4);
+    background:rgba(230,192,123,.1)}
   .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
   .chips span{padding:2px 8px;font-size:10.5px;color:var(--muted);background:var(--surface);
     border:1px solid var(--line);border-radius:6px;text-transform:capitalize}
@@ -1020,7 +1026,7 @@ async function peekLayer(){
          +`so branch cannot check coverage in advance.</div>`)
       +(i.fields.length?`<div class="cat">Columns you can filter on</div>`
         +`<div class="chips">`+i.fields.slice(0,40).map(f=>
-          `<span class="tag" title="${esc(f.type)}">${esc(f.name)}</span>`).join("")+`</div>`:"")
+          `<span title="${esc(f.type)}">${esc(f.name)}</span>`).join("")+`</div>`:"")
       +`</div>`;
   }catch(e){
     out.innerHTML=`<div class="msg err" style="margin-top:8px">${esc(e.message)}</div>`;
@@ -1049,11 +1055,56 @@ async function runTool(t){
         +listHTML(d.recipe)+recipeHTML(d.recipe)+`</div>`);
       wireList(d.recipe);
       tab="layers"; renderPanel();
+    } else if(res&&Array.isArray(res.results)){
+      openCard(t.noun||t.title,searchHTML(res)+recipeHTML(d.recipe));
+      wireSearchResults();
     } else {
       openCard(t.noun||t.title,valueHTML(res,d.recipe));
     }
   }catch(e){ openCard("Could not run that",`<div class="sec">${esc(e.message)}</div>`); }
   finally{ busy(false); }
+}
+function searchHTML(res){
+  const rows=(res&&res.results)||[];
+  if(!rows.length) return "";
+  window._found=rows;
+  return `<div class="sub">${esc(res.note||"")}</div>`
+    +rows.map((x,i)=>{
+      const cov=x.covers===true?`<span class="pill ok">covers your view</span>`
+              :x.covers===false?`<span class="pill warn">somewhere else</span>`:"";
+      return `<div class="sec">`
+        +`<div class="nm">${esc(x.name)}</div>`
+        +`<div class="sub">${esc(x.org||"")}`
+          +(x.geometry_type?` &middot; ${esc(String(x.geometry_type).replace("esriGeometry","").toLowerCase())}`:"")
+          +`</div>`
+        +(x.summary?`<div class="sub">${esc(x.summary)}</div>`:"")
+        +`<div class="row" style="margin-top:7px;flex-wrap:wrap">${cov}`
+          +(x.open
+            ? `<button class="btn sm" data-bring="${i}">Bring this in</button>`
+            : `<span class="pill warn">not open: ${esc(x.reason||"unavailable")}</span>`)
+        +`</div>`
+        +(x.fields&&x.fields.length?`<div class="chips" style="margin-top:7px">`
+          +x.fields.slice(0,14).map(f=>`<span>${esc(f)}</span>`).join("")+`</div>`:"")
+        +`</div>`;
+    }).join("");
+}
+function wireSearchResults(){
+  $("dockBody").querySelectorAll("[data-bring]").forEach(b=>b.onclick=async()=>{
+    const x=(window._found||[])[+b.dataset.bring]; if(!x) return;
+    const bb=map.getBounds();
+    const bbox=[bb.getWest(),bb.getSouth(),bb.getEast(),bb.getNorth()];
+    b.disabled=true; b.textContent="Fetching...";
+    busy(true,`Fetching ${x.name}`);
+    try{
+      const d=await callTool("arcgis",{url:x.url,bbox,limit:2000});
+      addLayer(x.name,d.result,{fit:true,src:{t:"arcgis",p:{url:x.url,bbox}}});
+      tab="layers"; renderPanel();
+      closeCard();
+    }catch(e){
+      b.disabled=false; b.textContent="Bring this in";
+      openCard("Could not bring that in",`<div class="sec">${esc(e.message)}</div>`);
+    }finally{ busy(false); }
+  });
 }
 function listHTML(r){
   const rows=r&&r.notice_list;
