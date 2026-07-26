@@ -124,10 +124,25 @@ def _fc(gdf: gpd.GeoDataFrame) -> dict:
     return json.loads(gdf.to_crs(config.WGS84).to_json())
 
 
-def _read_fc(fc: dict) -> gpd.GeoDataFrame:
-    gdf = gpd.GeoDataFrame.from_features(fc.get("features", []), crs=config.WGS84)
+def _read_fc(fc: dict, what: str = "layer") -> gpd.GeoDataFrame:
+    """A GeoDataFrame from a FeatureCollection, or a readable refusal.
+
+    The emptiness check has to happen BEFORE geopandas sees the list: building a
+    frame from no features fails inside the library with a message about the
+    ``geometry=`` keyword, which means nothing to a planner and hides which of
+    the tool's inputs was actually empty.
+    """
+    if not isinstance(fc, dict):
+        raise ValueError(f"The {what} is not a layer. Pick one from the list, or "
+                         f"draw an area on the map.")
+    feats = fc.get("features") or []
+    if not feats:
+        raise ValueError(f"The {what} has no features in it, so there is nothing "
+                         f"to work with.")
+    gdf = gpd.GeoDataFrame.from_features(feats, crs=config.WGS84)
     if gdf.empty:
-        raise ValueError("input layer has no features")
+        raise ValueError(f"The {what} has no features in it, so there is nothing "
+                         f"to work with.")
     return gdf
 
 
@@ -1110,13 +1125,8 @@ def _pick_field(columns, hints):
 def _run_notice_list(params: dict) -> dict:
     import pandas as pd
 
-    parcels = _read_fc(params["parcels"])
-    subject = _read_fc(params["subject"])
-    if parcels.empty:
-        raise ValueError("The parcel layer is empty, so there is nobody to notify.")
-    if subject.empty:
-        raise ValueError("No subject property was given. Draw or select the parcel "
-                         "the application is about.")
+    parcels = _read_fc(params["parcels"], "parcel layer")
+    subject = _read_fc(params["subject"], "subject property")
 
     feet = float(params.get("distance_ft", 200))
     if feet <= 0:
@@ -1267,3 +1277,93 @@ register(Tool(
                  "description": "[west, south, east, north], to check coverage"},
         "limit": {"type": "integer", "default": 8, "minimum": 1, "maximum": 8}}},
     run=_run_find_data))
+
+
+# Counting things inside areas: the operation every council map is built on.
+# "How many X per neighbourhood" is one question, and the two ways to get it
+# wrong are both invisible in the output. An area with nothing in it must come
+# back as zero rather than vanishing, or the map quietly claims every
+# neighbourhood has trees. And a per-acre rate has to be computed on the ground,
+# not from degrees, or the numbers drift with latitude.
+def _run_summarize_within(params: dict) -> dict:
+    import numpy as np
+    import pandas as pd
+
+    areas = _read_fc(params["areas"], "areas layer")
+    items = _read_fc(params["items"], "layer being counted")
+    field = params.get("field") or None
+    if field is not None:
+        if field not in items.columns:
+            raise ValueError(
+                f"There is no column called {field!r} in the layer being counted. "
+                f"Its columns are: "
+                f"{', '.join(map(str, [c for c in items.columns if c != 'geometry']))[:300]}.")
+        numeric = pd.to_numeric(items[field], errors="coerce")
+        if numeric.notna().sum() == 0:
+            raise ValueError(f"Column {field!r} holds no numbers, so it cannot be "
+                             f"totalled or averaged. Leave the field out to count "
+                             f"features instead.")
+        items = items.assign(**{"_v": numeric})
+
+    right = items.to_crs(areas.crs)
+    # Represent each item by one point so a polygon straddling a boundary lands
+    # in exactly one area. Counting by overlap would total more than the whole.
+    reps = right.copy()
+    reps["geometry"] = right.geometry.representative_point()
+
+    out = areas.copy().reset_index(drop=True)
+    out["_area_id"] = out.index
+    joined = gpd.sjoin(reps, out[["_area_id", "geometry"]], predicate="within",
+                       how="inner")
+    grouped = joined.groupby("_area_id")
+
+    counts = grouped.size()
+    out["count"] = out["_area_id"].map(counts).fillna(0).astype(int)
+    if field is not None:
+        out["total"] = out["_area_id"].map(grouped["_v"].sum())
+        # An area with nothing in it has no average. Zero would be a claim.
+        out["average"] = out["_area_id"].map(grouped["_v"].mean())
+        out.loc[out["count"] == 0, ["total", "average"]] = np.nan
+
+    # Rates are measured on the ground, in the local UTM zone.
+    metric = out.to_crs(out.estimate_utm_crs())
+    acres = metric.geometry.area / 4046.8564224
+    out["acres"] = acres.round(2)
+    out["per_acre"] = np.where(acres > 0, out["count"] / acres, np.nan)
+    out["per_acre"] = out["per_acre"].round(4)
+    out = out.drop(columns=["_area_id"])
+
+    unplaced = len(reps) - len(joined)
+    empty = int((out["count"] == 0).sum())
+    bits = [f"{len(joined):,} of {len(reps):,} counted."]
+    if unplaced:
+        bits.append(f"{unplaced:,} fell outside every area and were left out.")
+    if empty:
+        bits.append(f"{empty} area{'s' if empty != 1 else ''} contain nothing. "
+                    f"They are kept, at zero, because an empty area is a finding.")
+
+    return {"result": _fc(out.to_crs("EPSG:4326") if out.crs else out),
+            "recipe": {"tool": "summarize_within", "field": field,
+                       "areas": int(len(out)), "items_counted": int(len(joined)),
+                       "items_outside": int(unplaced), "empty_areas": empty,
+                       "note": " ".join(bits)}}
+
+
+register(Tool(
+    id="summarize_within", title="Count what is inside each area",
+    noun="Summary by area", category="shaping layers", returns="layer",
+    description="For every area in one layer, count how many things from another "
+                "layer fall inside it, and optionally total or average one of "
+                "their columns. Adds count, acres and a per acre rate to each "
+                "area, so the result can be mapped as a choropleth straight away. "
+                "Areas containing nothing are kept at zero. Use it for trees per "
+                "tract, complaints per ward, units per parcel. Also called zonal "
+                "statistics, summarize within, or a count of points in polygon.",
+    params={"type": "object", "required": ["areas", "items"], "properties": {
+        "areas": {"type": "object",
+                  "description": "the zones to summarise into, such as tracts"},
+        "items": {"type": "object",
+                  "description": "the layer being counted"},
+        "field": {"type": "string",
+                  "description": "optional numeric column to total and average"}}},
+    run=_run_summarize_within))

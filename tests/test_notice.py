@@ -124,8 +124,9 @@ def test_only_the_subject_in_range_is_an_error():
 
 
 def test_an_empty_parcel_layer_is_refused():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as e:
         _run({"parcels": _fc(), "subject": SUBJECT})
+    assert "parcel layer" in str(e.value) and "geometry=" not in str(e.value)
 
 
 def test_a_negative_radius_is_refused():
