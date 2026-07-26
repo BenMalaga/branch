@@ -258,3 +258,42 @@ def test_a_city_scale_rate_keeps_readable_precision():
     from_displayed = 1 / p["acres"]
     assert abs(p["per_acre"] - from_displayed) / from_displayed < 1e-4
     assert p["per_acre"] > 0.004   # and it kept real digits, not 0.0
+
+
+def test_spreadsheet_numbers_are_read_not_silently_discarded():
+    """["1,200","800","2,500","$300","450x"] totalled to 800 instead of 4800."""
+    vals = ["1,200", "800", "2,500", "$300", "450x"]
+    items = _fc(*[_pt(-74.645 + 0.0001 * i, 40.355, VAL=v)
+                  for i, v in enumerate(vals)])
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(SQUARE, NAME="a")), "items": items, "field": "VAL"})
+    p = out["result"]["features"][0]["properties"]
+    assert p["total"] == 4800.0
+    assert p["count"] == 5                      # all five are still features
+
+
+def test_a_value_that_is_not_a_number_is_reported_not_hidden():
+    items = _fc(_pt(-74.645, 40.355, VAL="1,200"),
+                _pt(-74.6451, 40.3551, VAL="see deed"))
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(SQUARE, NAME="a")), "items": items, "field": "VAL"})
+    assert out["recipe"]["values_unreadable"] == 1
+    note = out["recipe"]["note"]
+    assert "could not be read as a number" in note
+    assert "was left out" in note               # singular, since there is one
+
+
+@pytest.mark.parametrize("raw,expect", [
+    ("1,200", 1200.0), ("$300", 300.0), ("  42 ", 42.0), ("-3.5", -3.5),
+    ("1,234,567", 1234567.0), (7, 7.0), ("7", 7.0),
+    ("450x", None), ("see deed", None), ("", None), (None, None), (True, None),
+])
+def test_the_number_parser_accepts_conventions_and_refuses_guesses(raw, expect):
+    assert registry._to_number(raw) == expect
+
+
+def test_an_items_column_named_area_id_does_not_crash_the_grouping():
+    out = registry.get("summarize_within").run(
+        {"areas": _fc(_f(SQUARE, NAME="a")),
+         "items": _fc(_pt(-74.645, 40.355, _area_id=7))})
+    assert out["result"]["features"][0]["properties"]["count"] == 1

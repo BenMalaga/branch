@@ -11,6 +11,7 @@ the recipe is a re-runnable record of the tool id + resolved params (provenance)
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -1378,6 +1379,33 @@ register(Tool(
 # back as zero rather than vanishing, or the map quietly claims every
 # neighbourhood has trees. And a per-acre rate has to be computed on the ground,
 # not from degrees, or the numbers drift with latitude.
+_MONEYISH = re.compile(r"^[\s$£€]*(-?[\d,]*\.?\d+)\s*$")
+
+
+def _to_number(value):
+    """A number from a spreadsheet cell, or None if it is not one.
+
+    Assessor exports write 1,200 and $300 and mean numbers. They also write
+    "450x" and "see deed", which mean something else. ``pd.to_numeric`` turns
+    ALL of those into NaN, so a column of five values totalled to 800 instead of
+    5300, silently. Accept the conventional money and thousands formats; refuse
+    everything else rather than guessing at it.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return None if value != value else float(value)
+    match = _MONEYISH.match(str(value))
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
 def _run_summarize_within(params: dict) -> dict:
     import numpy as np
     import pandas as pd
@@ -1391,13 +1419,19 @@ def _run_summarize_within(params: dict) -> dict:
                 f"There is no column called {field!r} in the layer being counted. "
                 f"Its columns are: "
                 f"{', '.join(map(str, [c for c in items.columns if c != 'geometry']))[:300]}.")
-        numeric = pd.to_numeric(items[field], errors="coerce")
-        if numeric.notna().sum() == 0:
+        numeric = items[field].map(_to_number)
+        unreadable = int(numeric.isna().sum())
+        if unreadable == len(numeric):
             raise ValueError(f"Column {field!r} holds no numbers, so it cannot be "
                              f"totalled or averaged. Leave the field out to count "
                              f"features instead.")
         items = items.assign(**{"_v": numeric})
 
+    # An items layer carrying a column called _area_id would collide with the
+    # key used to group by, and geopandas raises KeyError rather than choosing.
+    items = items.drop(columns=[c for c in ("_area_id", "_v_original")
+                                if c in items.columns and c != "_v"],
+                       errors="ignore")
     right = items.to_crs(areas.crs)
     # Represent each item by one point so a polygon straddling a boundary lands
     # in exactly one area. Counting by overlap would total more than the whole.
@@ -1450,6 +1484,13 @@ def _run_summarize_within(params: dict) -> dict:
         bits.append(f"{multi:,} landed in more than one area because the areas "
                     f"overlap, so the per-area counts add up to more than the "
                     f"total. That is correct per area, but do not sum the column.")
+    if field is not None and unreadable:
+        one = unreadable == 1
+        bits.append(f"{unreadable:,} value{'' if one else 's'} in {field!r} "
+                    f"could not be read as a number and "
+                    f"{'was' if one else 'were'} left out of the total and the "
+                    f"average. The count still "
+                    f"{'includes it.' if one else 'includes them.'}")
     if renamed:
         bits.append("This layer already had "
                     + ", ".join(sorted(renamed)) + ", so "
@@ -1464,6 +1505,8 @@ def _run_summarize_within(params: dict) -> dict:
 
     return {"result": _fc(out.to_crs("EPSG:4326") if out.crs else out),
             "recipe": {"tool": "summarize_within", "field": field,
+                       **({"values_unreadable": unreadable}
+                          if field is not None and unreadable else {}),
                        **({"renamed_columns": renamed} if renamed else {}),
                        "areas": int(len(out)), "items_counted": int(placed),
                        "items_outside": int(unplaced),
