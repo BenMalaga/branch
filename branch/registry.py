@@ -143,6 +143,65 @@ def _read_fc(fc: dict, what: str = "layer") -> gpd.GeoDataFrame:
     if gdf.empty:
         raise ValueError(f"The {what} has no features in it, so there is nothing "
                          f"to work with.")
+    return _repair(gdf, what)
+
+
+def _has_shape(geom) -> bool:
+    """Is there a real geometry here at all?"""
+    return geom is not None and not geom.is_empty
+
+
+def _dimension(geom) -> int:
+    """2 for anything polygonal, 1 for lines, 0 for points."""
+    kind = geom.geom_type
+    return 2 if "Polygon" in kind else 1 if "Line" in kind else 0
+
+
+def _same_dimension(geom, want: int):
+    """Keep only the repaired parts that are still the shape we started with.
+
+    ``make_valid`` turns a self-intersecting polygon into real polygons, but it
+    can also return a collection carrying stray lines where an edge collapsed.
+    Letting those through would swap one wrong number for another.
+    """
+    import shapely
+    from shapely.geometry import GeometryCollection
+
+    if geom is None or geom.is_empty:
+        return None
+    if isinstance(geom, GeometryCollection) or geom.geom_type.startswith("Multi"):
+        parts = [g for g in getattr(geom, "geoms", []) if _dimension(g) == want]
+        if not parts:
+            return None
+        return parts[0] if len(parts) == 1 else shapely.union_all(parts)
+    return geom if _dimension(geom) == want else None
+
+
+def _repair(gdf: gpd.GeoDataFrame, what: str) -> gpd.GeoDataFrame:
+    """Fix invalid geometry before anything measures it.
+
+    Municipal parcel exports routinely contain self-intersecting rings. Shapely
+    does not raise on them; it returns an answer. A bow-tie polygon measured
+    0.0 acres and contained 0 points, which is a confident wrong number of
+    exactly the kind this project refuses to ship. Repair here, once, at the
+    boundary, so no individual tool has to remember to.
+    """
+    geom = gdf.geometry
+    missing = ~geom.map(_has_shape)
+    invalid = (~missing) & (~geom.is_valid)
+    if invalid.any():
+        wanted = geom[invalid].apply(_dimension)
+        fixed = geom[invalid].make_valid()
+        gdf = gdf.copy()
+        gdf.loc[invalid, "geometry"] = [
+            _same_dimension(g, w) for g, w in zip(fixed, wanted)
+        ]
+    if invalid.any() or missing.any():
+        gdf = gdf[gdf.geometry.map(_has_shape)]
+    if gdf.empty:
+        raise ValueError(
+            f"Every shape in the {what} is broken beyond repair or empty, so "
+            f"there is nothing to measure. Check the file in whatever produced it.")
     return gdf
 
 

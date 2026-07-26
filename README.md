@@ -31,9 +31,15 @@ and a function the optional assistant can call.
 | Overlays | buildings in 3D, roads, water, green cover, land use, infrastructure, boundaries, addresses and places, streamed worldwide from Overture Maps, plus dated historical satellite imagery back to 2014 |
 
 Each tool reprojects to the metric coordinate system local to the ground it is
-measuring (its own UTM zone, so a length is a length anywhere on earth),
-validates geometry, and returns its result together with a small recipe (the
-tool plus the exact parameters it ran), so any answer can be reproduced.
+measuring (its own UTM zone, so a length is a length anywhere on earth), and
+returns its result together with a small recipe (the tool plus the exact
+parameters it ran), so any answer can be reproduced.
+
+Broken geometry is repaired before anything measures it. Municipal parcel
+exports routinely contain self-intersecting rings, and a geometry engine does
+not raise on those, it answers: a bow-tie polygon measured 0.0 acres and
+contained 0 points. Those shapes are now repaired once, on the way in, and a
+layer whose shapes are all broken is refused rather than mapped as empty.
 
 A file that arrives in the wrong coordinate system is not drawn as if it were
 right. Coordinates in the hundreds of thousands are recognised as a projected
