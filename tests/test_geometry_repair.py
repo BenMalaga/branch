@@ -249,9 +249,12 @@ def test_a_rate_over_a_county_sized_area_is_not_rounded_to_zero():
 
 
 def test_a_city_scale_rate_keeps_readable_precision():
-    """Six significant figures, so compare relatively rather than absolutely."""
+    """per_acre is computed from the full-precision area, while the acres shown
+    beside it is rounded to two decimals for reading. So they agree closely but
+    not exactly, and the check has to allow for the displayed rounding."""
     out = registry.get("summarize_within").run(
         {"areas": _fc(_f(SQUARE, NAME="a")), "items": _fc(_pt(-74.645, 40.355))})
     p = out["result"]["features"][0]["properties"]
-    true = 1 / p["acres"]
-    assert abs(p["per_acre"] - true) / true < 1e-5, (p["per_acre"], true)
+    from_displayed = 1 / p["acres"]
+    assert abs(p["per_acre"] - from_displayed) / from_displayed < 1e-4
+    assert p["per_acre"] > 0.004   # and it kept real digits, not 0.0
